@@ -5,8 +5,10 @@ use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
 use choice_vec::*;
 use page::Page;
+use tuple::Tuple;
+use util::*;
 
-use self::OpenMode::*;
+pub use self::OpenMode::*;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum OpenMode {
@@ -94,7 +96,8 @@ impl Relation {
             split_pointer: split_pointer,
             num_pages: num_pages,
             num_tuples: num_tuples,
-            choice_vec: ChoiceVec {},
+            // FIXME
+            choice_vec: ChoiceVec::new(vec![], num_attrs),
             mode: mode,
             info_file: info_file,
             data_file: try!(open_opts.open(data_file_name(name))),
@@ -104,6 +107,28 @@ impl Relation {
 
     pub fn exists(name: &str) -> bool {
         Path::new(&info_file_name(name)).is_file()
+    }
+
+    /// Insert a tuple into the relation.
+    pub fn insert(&mut self, t: Tuple) -> io::Result<()> {
+        let tuple_hash = t.hash(&self.choice_vec);
+
+        let mut page_id = lower_bits(self.depth as u8, tuple_hash);
+
+        // If the d-bit hash is less than the split-pointer, then we have to use
+        // d + 1 bits of hash.
+        if page_id < (self.split_pointer as u32) {
+            page_id = lower_bits(self.depth as u8 + 1, tuple_hash);
+        }
+
+        let mut page = try!(Page::read(&mut self.data_file, page_id as u64));
+
+        let serialised_tuple = t.serialise();
+        if page.try_add_tuple(&serialised_tuple) {
+            try!(page.write(&mut self.data_file, page_id as u64));
+        }
+
+        Ok(())
     }
 
     pub fn write_info_file(&mut self) -> io::Result<()> {
