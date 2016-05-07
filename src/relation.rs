@@ -4,6 +4,7 @@ use std::io::{self, Seek, SeekFrom};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
 use choice_vec::*;
+use page::Page;
 
 use self::OpenMode::*;
 
@@ -54,7 +55,7 @@ impl Relation {
             ));
         }
         // Create new relation struct and associated files.
-        let r = Relation {
+        let mut r = Relation {
             num_attrs: num_attrs,
             depth: depth,
             split_pointer: 0,
@@ -66,7 +67,11 @@ impl Relation {
             data_file: try!(File::create(data_file_name(name))),
             ovflow_file: try!(File::create(ovflow_file_name(name)))
         };
-        // TODO: Write initial pages.
+
+        // Write initial empty pages.
+        for i in 0..num_pages {
+            try!(Page::empty().write(&mut r.data_file, i));
+        }
 
         // Write metadata.
         r.close()

@@ -100,4 +100,3 @@ Count pageFreeSpace(Page p) {
 	Count hdr_size = 2*sizeof(Offset) + sizeof(Count);
 	return (PAGESIZE-hdr_size-p->free);
 }
-
