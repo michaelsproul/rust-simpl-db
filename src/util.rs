@@ -37,3 +37,22 @@ pub fn lower_bits(n: u8, val: u32) -> u32 {
     }
     val & mask
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_bit() {
+        assert_eq!(bit(0, 0b1100), 0);
+        assert_eq!(bit(1, 0b1100), 0);
+        assert_eq!(bit(2, 0b1100), 1);
+        assert_eq!(bit(3, 0b1100), 1);
+        assert_eq!(bit(4, 0b1100), 0);
+    }
+
+    #[test]
+    fn test_lower_bits() {
+        assert_eq!(lower_bits(2, 0b111101), 0b01);
+    }
+}

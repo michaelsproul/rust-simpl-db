@@ -1,6 +1,8 @@
 use std::fs::File;
 use std::io::{self, Read, Write, Seek, SeekFrom};
+use std::collections::LinkedList;
 use util::*;
+use tuple::Tuple;
 
 pub const PAGE_SIZE: usize = 1024;
 pub const PAGE_HEADER_SIZE: usize = 8 * 3;
@@ -9,7 +11,7 @@ pub const NO_OVFLOW: u64 = 0xffffffffffffffff;
 
 pub struct Page<'a> {
     /// Page ID for this page - offset within the data file.
-    id: u64,
+    pub id: u64,
     /// Data file for this page.
     file: &'a File,
     /// Offset of free space within data.
@@ -27,15 +29,19 @@ pub struct Page<'a> {
 impl<'b> Page<'b> {
     pub fn new<'a>(file: &'a File) -> io::Result<Page<'a>> {
         let id = try!(next_page_id(file));
-        Ok(Page {
-            id: id,
+        Ok(Page::empty(file, id))
+    }
+
+    pub fn empty<'a>(file: &'a File, page_id: u64) -> Page<'a> {
+        Page {
+            id: page_id,
             file: file,
             free: 0,
             ovflow: NO_OVFLOW,
             num_tuples: 0,
             dirty: true,
             data: empty_data_block()
-        })
+        }
     }
 
     pub fn mark_dirty(&mut self) {
@@ -87,6 +93,15 @@ impl<'b> Page<'b> {
         try!(self.file.flush());
         self.dirty = false;
         Ok(())
+    }
+
+    /// Retrieve all the tuples from this page.
+    pub fn get_tuple_list(&self) -> LinkedList<Tuple> {
+        self.data
+            .split(|&b| b == 0)
+            .filter(|slice| slice.len() > 0)
+            .map(|slice| Tuple::parse(slice))
+            .collect()
     }
 
     /// Add a tuple if one will fit.

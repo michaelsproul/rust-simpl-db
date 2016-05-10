@@ -2,7 +2,7 @@ use util::HASH_SIZE;
 
 pub type ChoiceEntry = (u64, u8);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ChoiceVec {
     pub data: [ChoiceEntry; HASH_SIZE],
 }

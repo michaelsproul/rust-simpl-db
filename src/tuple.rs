@@ -1,5 +1,6 @@
 use choice_vec::ChoiceVec;
 use util::*;
+use std::str;
 
 #[derive(Clone)]
 pub struct Tuple {
@@ -17,6 +18,18 @@ impl Tuple {
         }
 
         result
+    }
+
+    pub fn parse(s: &[u8]) -> Tuple {
+        let parse_single = |slice| {
+            str::from_utf8(slice).expect("Non UTF-8 data in database file.").to_string()
+        };
+
+        Tuple {
+            values: s.split(|&b| b == ',' as u8)
+                     .map(parse_single)
+                     .collect()
+        }
     }
 
     pub fn serialise(&self) -> Vec<u8> {
