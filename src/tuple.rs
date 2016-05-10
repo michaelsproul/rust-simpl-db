@@ -1,6 +1,7 @@
 use choice_vec::ChoiceVec;
 use util::*;
 
+#[derive(Clone)]
 pub struct Tuple {
     pub values: Vec<String>
 }
