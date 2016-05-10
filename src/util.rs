@@ -26,8 +26,7 @@ pub fn hash<T: Hash + ?Sized>(t: &T) -> u32 {
 /// Grab the ith bit of a value.
 #[inline]
 pub fn bit(i: u8, val: u32) -> u32 {
-    let mask = 1 << i;
-    val & mask
+    (val >> i) & 1
 }
 
 // Grab the lower n bits of a value.
