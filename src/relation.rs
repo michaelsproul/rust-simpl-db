@@ -57,7 +57,7 @@ impl Relation {
             ));
         }
         // Create new relation struct and associated files.
-        let mut r = Relation {
+        let r = Relation {
             num_attrs: num_attrs,
             depth: depth,
             split_pointer: 0,
@@ -71,8 +71,9 @@ impl Relation {
         };
 
         // Write initial empty pages.
-        for i in 0..num_pages {
-            try!(Page::empty().write(&mut r.data_file, i));
+        for _ in 0..num_pages {
+            let page = try!(Page::new(&r.data_file));
+            try!(page.close());
         }
 
         // Write metadata.
@@ -111,6 +112,10 @@ impl Relation {
 
     /// Insert a tuple into the relation.
     pub fn insert(&mut self, t: Tuple) -> io::Result<()> {
+        // TODO: Expand every c inserts.
+        // num_tuples = c * num_pages
+        // Keep initial pages and expand once num_tuples > c * num_initial_pages.
+
         let tuple_hash = t.hash(&self.choice_vec);
 
         let mut page_id = lower_bits(self.depth as u8, tuple_hash);
@@ -121,12 +126,20 @@ impl Relation {
             page_id = lower_bits(self.depth as u8 + 1, tuple_hash);
         }
 
-        let mut page = try!(Page::read(&mut self.data_file, page_id as u64));
+        let mut page = try!(Page::read(&self.data_file, page_id as u64));
 
         let serialised_tuple = t.serialise();
-        if page.try_add_tuple(&serialised_tuple) {
-            try!(page.write(&mut self.data_file, page_id as u64));
+
+        // If the tuple fits in the main data page, add it and write out.
+        if page.add_tuple(&serialised_tuple) {
+            try!(page.write());
         }
+        // Otherwise, add it to the overflow chain.
+        else {
+            try!(page.add_to_overflow(&self.ovflow_file, &serialised_tuple));
+        }
+
+        self.num_tuples += 1;
 
         Ok(())
     }
