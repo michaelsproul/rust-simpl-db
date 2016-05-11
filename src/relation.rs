@@ -178,8 +178,8 @@ impl Relation {
             try!(Relation::load_next_page(next_page_id, ovflow_file, tuple_cache, spare_pages));
             spare_pages.pop_front().expect("Load next page didn't work")
         }
-        // Impossible case, as (k_i + 1) <= (k_i + 2) <= (k_i + 2)
-        // where k_i is the # of initial overflow pages and k_o is the # of overflow pages
+        // Impossible case, as (k_init + 1) <= (k_after + 2) <= (k_init + 2)
+        // where k_init is the # of initial overflow pages and k_after is the # of overflow pages
         // after the split.
         else {
             unreachable!("There are pages around, you're just not looking hard enough.")
@@ -286,6 +286,15 @@ impl Relation {
         try!(high_page.close());
 
         self.num_pages += 1;
+
+        // If there's a left-over overflow page, zero it.
+        assert!(spare_pages.len() <= 1);
+        if let Some(spare_page) = spare_pages.pop_front() {
+            println!("Writing left-over page.");
+            let mut leftover_page = Page::empty(&self.ovflow_file, spare_page);
+            try!(leftover_page.write());
+        }
+
         // If the split pointer has hit the cross-over point, reset it to 0.
         // sp = 2^d - 1.
         if sp == ((1 << d) - 1) {
