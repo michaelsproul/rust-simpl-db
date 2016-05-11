@@ -2,7 +2,6 @@ use std::path::Path;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Seek, SeekFrom};
 use std::collections::LinkedList;
-use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
 use choice_vec::*;
 use page::{Page, PAGE_SIZE, NO_OVFLOW};
@@ -83,16 +82,15 @@ impl Relation {
     }
 
     /// Open an existing relation for reading or writing.
-    // FIXME: remove choice vec argument.
-    pub fn open(name: &str, mode: OpenMode, choice_vec: ChoiceVec) -> io::Result<Relation> {
+    pub fn open(name: &str, mode: OpenMode) -> io::Result<Relation> {
         let open_opts = mode.open_options();
         let mut info_file = try!(open_opts.open(info_file_name(name)));
-        let r = |f: &mut File| f.read_u64::<BigEndian>();
-        let num_attrs = try!(r(&mut info_file));
-        let depth = try!(r(&mut info_file));
-        let split_pointer = try!(r(&mut info_file));
-        let num_pages = try!(r(&mut info_file));
-        let num_tuples = try!(r(&mut info_file));
+        let num_attrs = try!(read_u64(&mut info_file));
+        let depth = try!(read_u64(&info_file));
+        let split_pointer = try!(read_u64(&info_file));
+        let num_pages = try!(read_u64(&info_file));
+        let num_tuples = try!(read_u64(&info_file));
+        let choice_vec = try!(ChoiceVec::read(&info_file));
 
         Ok(Relation {
             num_attrs: num_attrs,
@@ -100,7 +98,6 @@ impl Relation {
             split_pointer: split_pointer,
             num_pages: num_pages,
             num_tuples: num_tuples,
-            // FIXME
             choice_vec: choice_vec,
             mode: mode,
             info_file: info_file,
@@ -119,9 +116,7 @@ impl Relation {
 
     /// Insert a tuple into the relation.
     pub fn insert(&mut self, t: Tuple) -> io::Result<()> {
-        // TODO: Expand every c inserts.
-        // num_tuples = c * num_pages
-        // Keep initial pages and expand once num_tuples > c * num_initial_pages.
+        // Expand whenever the resize threshold is hit.
         if self.num_tuples == self.resize_threshold() {
             println!("Resizing");
             try!(self.grow());
@@ -303,14 +298,15 @@ impl Relation {
     }
 
     pub fn write_info_file(&mut self) -> io::Result<()> {
-        let f = &mut self.info_file;
-        let w = |f: &mut File, x: u64| f.write_u64::<BigEndian>(x);
+        let mut f = &self.info_file;
         try!(f.seek(SeekFrom::Start(0)));
-        try!(w(f, self.num_attrs));
-        try!(w(f, self.depth));
-        try!(w(f, self.split_pointer));
-        try!(w(f, self.num_pages));
-        w(f, self.num_tuples)
+        try!(write_u64(f, self.num_attrs));
+        try!(write_u64(f, self.depth));
+        try!(write_u64(f, self.split_pointer));
+        try!(write_u64(f, self.num_pages));
+        try!(write_u64(f, self.num_tuples));
+        try!(self.choice_vec.write(f));
+        Ok(())
     }
 
     pub fn close(mut self) -> io::Result<()> {

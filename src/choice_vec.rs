@@ -1,4 +1,8 @@
-use util::HASH_SIZE;
+use std::fs::File;
+use std::io;
+use byteorder::{ReadBytesExt, WriteBytesExt};
+
+use util::*;
 
 pub type ChoiceEntry = (u64, u8);
 
@@ -47,6 +51,24 @@ impl ChoiceVec {
         }
 
         Ok(c_vector)
+    }
+
+    pub fn write(&self, mut f: &File) -> io::Result<()> {
+        for &(attr, val) in self.data.iter() {
+            try!(write_u64(f, attr));
+            try!(f.write_u8(val));
+        }
+        Ok(())
+    }
+
+    pub fn read(mut f: &File) -> io::Result<ChoiceVec> {
+        let mut data = [(0, 0); HASH_SIZE];
+        for i in 0..HASH_SIZE {
+            let attr = try!(read_u64(f));
+            let val = try!(f.read_u8());
+            data[i] = (attr, val);
+        }
+        Ok(ChoiceVec { data: data })
     }
 }
 

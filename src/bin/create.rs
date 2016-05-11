@@ -19,13 +19,13 @@ fn main() {
     };
     println!("hash #1 = {:b}, hash #2 = {:b}", t1.hash(&cv), t2.hash(&cv));
 
-    let mut r = Relation::open("test", Writing, cv.clone()).unwrap();
+    let mut r = Relation::open("test", Writing).unwrap();
 
     for _ in 0..1000 {
         r.insert(t1.clone()).unwrap();
         r.insert(t2.clone()).unwrap();
     }
-    r.close();
+    r.close().unwrap();
 
     println!("Success!");
 }
