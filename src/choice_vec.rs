@@ -6,20 +6,21 @@ pub type ChoiceEntry = (u64, u8);
 #[derive(Debug)]
 pub struct ChoiceVec {
     pub data: [ChoiceEntry; HASH_SIZE],
-    pub attr_number: u64
 }
 
+#[derive(Debug)]
 enum ParseError {
-    NumberError,
-    MissingNumError
+    NumberUnparsable,
+    TooManyTuples,
+    MissingNumError(u64),
+    InvalidAttr(u8)
 }
 
 impl ChoiceVec {
     pub fn new(given_bits: Vec<ChoiceEntry>, attrs: u64) -> ChoiceVec {
         assert!(given_bits.len() <= HASH_SIZE);
         let mut cv = ChoiceVec {
-            data: [(0, 0); HASH_SIZE],
-            attr_number: attrs
+            data: [(0, 0); HASH_SIZE]
         };
         // Copy in the provided bits.
         cv.data[0 .. given_bits.len()].clone_from_slice(&given_bits[..]);
@@ -28,23 +29,22 @@ impl ChoiceVec {
         cv
     }
 
-    fn parse_choice_vec(input: &str, attrs: u64) -> Result<ChoiceVec, ParseError> {
+    fn parse_choice_vec(input: &str, attr_count: u8) -> Result<ChoiceVec, ParseError> {
         let mut c_vector = ChoiceVec {
-            data: [(0, 0); HASH_SIZE],
-            attr_number: attrs
+            data: [(0, 0); HASH_SIZE]
         };
 
         for (i, entry) in input.split(':').enumerate() {
+            if i > 32 { return Err(ParseError::TooManyTuples) }
             let mut split = entry.split(',');
-            let lo = split.nth(0);
-            let ro = split.nth(1);
-            if let (Some(l_str), Some(r_str)) = (lo, ro) {
-                let l = try!(l_str.parse::<u64>().or_else(|_| Err(ParseError::NumberError)));
-                let r = try!(r_str.parse::<u8>().or_else(|_| Err(ParseError::NumberError)));
+            if let (Some(l_str), Some(r_str)) = (split.next(), split.next()) {
+                let l = try!(l_str.parse().or_else(|_| Err(ParseError::NumberUnparsable)));
+                let r = try!(r_str.parse().or_else(|_| Err(ParseError::NumberUnparsable)));
+                if r > attr_count { return Err(ParseError::InvalidAttr(r)) }
                 c_vector.data[i] = (l, r);
             }
             else {
-                return Err(ParseError::MissingNumError)
+                return Err(ParseError::MissingNumError(i as u64))
             }
         }
 
@@ -60,13 +60,15 @@ mod tests {
 
     #[test]
     fn parse_1_n_2s() {
-       if let Ok(result) = ChoiceVec::parse_choice_vec("1,2:1,2", 2) {
-         let expect     = ChoiceVec::new(vec![(1, 2), (1, 2)], 2);
-         assert_eq!(result.data, expect.data);
-       }
-       else {
-         panic!("failed to parse");
-       }
+        match ChoiceVec::parse_choice_vec("1,2:1,2", 2) {
+            Ok(result) => {
+                let expect = ChoiceVec::new(vec![(1, 2), (1, 2)], 2);
+                assert_eq!(result.data, expect.data);
+            },
+            Err(reason) => {
+                panic!("failed to parse, because {:?}", reason);
+            }
+        }
     }
 }
 
