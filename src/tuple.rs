@@ -38,3 +38,23 @@ impl Tuple {
         result
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn serialise_parse() {
+        use std::str;
+        let data = [
+            "hello,world",
+            "wow",
+            "rust,haskell,c,java,python,lisp"
+        ];
+        for &tuple in &data {
+            let serialised = Tuple::parse(tuple.as_bytes()).serialise();
+            let roundtrip = str::from_utf8(&serialised[..serialised.len() - 1]).unwrap();
+            assert_eq!(tuple, roundtrip);
+        }
+    }
+}
