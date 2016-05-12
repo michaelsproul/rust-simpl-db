@@ -118,7 +118,7 @@ impl Relation {
     pub fn insert(&mut self, t: Tuple) -> io::Result<()> {
         // Expand whenever the resize threshold is hit.
         if self.num_tuples == self.resize_threshold() {
-            println!("Resizing");
+            info!("Resizing the relation.");
             try!(self.grow());
         }
 
@@ -167,14 +167,14 @@ impl Relation {
         }
         // Otherwise, we look for an overflow page.
         // If there's a spare one already hanging around, use it.
-        println!("  looking for an overflow page");
+        trace!("  looking for an overflow page");
         let ovflow_page_id = if let Some(spare_page) = spare_pages.pop_front() {
-            println!("  using existing spare page: {}", spare_page);
+            trace!("  using existing spare page: {}", spare_page);
             spare_page
         }
         // If there's another page to be loaded, use that.
         else if *next_page_id != NO_OVFLOW {
-            println!("  loading the next page and using that: {}", *next_page_id);
+            trace!("  loading the next page and using that: {}", *next_page_id);
             try!(Relation::load_next_page(next_page_id, ovflow_file, tuple_cache, spare_pages));
             spare_pages.pop_front().expect("Load next page didn't work")
         }
@@ -226,7 +226,7 @@ impl Relation {
         // Current high numbered page, initialised to a new page at the end of the file.
         let mut high_page = try!(Page::new(&self.data_file));
 
-        println!("Splitting page {:b} into {:b} and {:b}", sp, sp, high_page.id);
+        debug!("Splitting page {:b} into {:b} and {:b}", sp, sp, high_page.id);
 
         // First old data page.
         let old_low_page = try!(Page::read(&self.data_file, sp));
@@ -243,24 +243,24 @@ impl Relation {
         drop(old_low_page);
 
         loop {
-            println!("Iteration start.");
-            println!("  next_page_id = {}", next_page_id);
-            println!("  size tuple_cache = {}", tuple_cache.len());
-            println!("  spare_pages = {:?}", spare_pages);
+            trace!("Iteration start.");
+            trace!("  next_page_id = {}", next_page_id);
+            trace!("  size tuple_cache = {}", tuple_cache.len());
+            trace!("  spare_pages = {:?}", spare_pages);
             // If there is a tuple in the cache, redistribute it.
             if let Some(tuple) = tuple_cache.pop_front() {
                 let full_hash = tuple.hash(&self.choice_vec);
-                println!("  full tuple hash = {:b}", full_hash);
+                trace!("  full tuple hash = {:b}", full_hash);
                 let hash = lower_bits(d + 1, full_hash);
-                println!("  lower_bits({}, hash) = {:b}", d + 1, hash);
+                trace!("  lower_bits({}, hash) = {:b}", d + 1, hash);
                 let s_tuple = tuple.serialise();
 
                 // Store on the left if the hash bits still match the split pointer.
                 let storage_page = if hash == sp as u32 {
-                    println!("  Storing tuple {:?} with hash {:b} on the LEFT", tuple.values, hash);
+                    trace!("  Storing tuple {:?} with hash {:b} on the LEFT", tuple.values, hash);
                     &mut low_page
                 } else {
-                    println!("  Storing tuple {:?} with hash {:b} on the RIGHT", tuple.values, hash);
+                    trace!("  Storing tuple {:?} with hash {:b} on the RIGHT", tuple.values, hash);
                     &mut high_page
                 };
                 try!(Relation::store_tuple_grow(
@@ -274,7 +274,7 @@ impl Relation {
             }
             // If the cache is exhausted, but there are more pages to read, load one.
             else {
-                println!("  tuple cache exhausted, loading the next file");
+                trace!("  tuple cache exhausted, loading the next file");
                 try!(Relation::load_next_page(
                     &mut next_page_id, &self.ovflow_file,
                     &mut tuple_cache, &mut spare_pages)
@@ -290,7 +290,7 @@ impl Relation {
         // If there's a left-over overflow page, zero it.
         assert!(spare_pages.len() <= 1);
         if let Some(spare_page) = spare_pages.pop_front() {
-            println!("Writing left-over page.");
+            debug!("Writing left-over page.");
             let mut leftover_page = Page::empty(&self.ovflow_file, spare_page);
             try!(leftover_page.write());
         }

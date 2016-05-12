@@ -5,3 +5,5 @@ authors = ["Michael Sproul <micsproul@gmail.com>"]
 
 [dependencies]
 byteorder = "0.5.1"
+log = "0.3.6"
+env_logger = "0.3.3"
