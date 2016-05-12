@@ -1,8 +1,12 @@
 use std::fs::File;
 use std::io;
+use std::env;
 use std::process::exit;
-use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use std::hash::{Hash, SipHasher, Hasher};
+
+use env_logger::{self, LogBuilder};
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+
 
 pub const HASH_SIZE: usize = 32;
 
@@ -42,9 +46,18 @@ pub fn lower_bits(n: u8, val: u32) -> u32 {
 /// Print an error and exit the program with a non-zero status.
 /// Helper function for front-end code.
 pub fn error<S: AsRef<str>>(s: S) -> ! {
-    // TODO: Use stderr instead.
-    println!("{}", s.as_ref());
+    error!("{}", s.as_ref());
     exit(1)
+}
+
+/// Enable logging.
+pub fn enable_logging() {
+    let mut builder = LogBuilder::new();
+    builder.format(|rec| format!("{}", rec.args()));
+    if let Ok(log_options) = env::var("RUST_LOG") {
+        builder.parse(&log_options);
+    }
+    builder.init().unwrap();
 }
 
 #[cfg(test)]

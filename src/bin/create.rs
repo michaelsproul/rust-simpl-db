@@ -3,8 +3,10 @@ extern crate malh;
 use malh::relation::{Relation, Writing};
 use malh::choice_vec::ChoiceVec;
 use malh::tuple::Tuple;
+use malh::util::enable_logging;
 
 fn main() {
+    enable_logging();
     let num_attrs = 2;
     let depth = 0;
     let num_pages = 1;

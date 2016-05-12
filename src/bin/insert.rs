@@ -2,12 +2,13 @@ extern crate malh;
 
 use malh::tuple::Tuple;
 use malh::relation::{Relation, Writing};
-use malh::util::error;
+use malh::util::{enable_logging, error};
 
 use std::io::{self, BufRead};
 use std::env;
 
 fn main() {
+    enable_logging();
     if env::args().len() != 2 {
         error("Usage: insert <relation>");
     }
