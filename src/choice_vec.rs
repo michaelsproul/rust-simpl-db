@@ -1,5 +1,4 @@
 use util::HASH_SIZE;
-use relation::{Relation};
 
 pub type ChoiceEntry = (u64, u8);
 
@@ -9,11 +8,12 @@ pub struct ChoiceVec {
 }
 
 #[derive(Debug)]
-enum ParseError {
+pub enum ParseError {
     NumberUnparsable,
     TooManyTuples,
     MissingNumError(u64),
-    InvalidAttr(u8)
+    InvalidAttr(u8),
+    InvalidEntry
 }
 
 impl ChoiceVec {
@@ -29,33 +29,30 @@ impl ChoiceVec {
         cv
     }
 
-    fn parse_choice_vec(input: &str, attr_count: u8) -> Result<ChoiceVec, ParseError> {
+    pub fn parse_choice_vec(input: &str, attr_count: u8) -> Result<ChoiceVec, ParseError> {
         let mut c_vector = ChoiceVec {
             data: [(0, 0); HASH_SIZE]
         };
 
         for (i, entry) in input.split(':').enumerate() {
-            if i > 32 { return Err(ParseError::TooManyTuples) }
-            let mut split = entry.split(',');
-            if let (Some(l_str), Some(r_str)) = (split.next(), split.next()) {
-                let l = try!(l_str.parse().or_else(|_| Err(ParseError::NumberUnparsable)));
-                let r = try!(r_str.parse().or_else(|_| Err(ParseError::NumberUnparsable)));
-                if r > attr_count { return Err(ParseError::InvalidAttr(r)) }
-                c_vector.data[i] = (l, r);
+            if i >= HASH_SIZE { return Err(ParseError::TooManyTuples) }
+            let split: Vec<&str> = entry.split(',').collect();
+            if split.len() != 2 {
+                return Err(ParseError::InvalidEntry);
             }
-            else {
-                return Err(ParseError::MissingNumError(i as u64))
-            }
+            let l = try!(split[0].parse().or_else(|_| Err(ParseError::NumberUnparsable)));
+            let r = try!(split[1].parse().or_else(|_| Err(ParseError::NumberUnparsable)));
+            if r > attr_count { return Err(ParseError::InvalidAttr(r)) }
+            c_vector.data[i] = (l, r);
         }
 
         Ok(c_vector)
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use super::{ChoiceVec, ChoiceEntry};
+    use super::ChoiceVec;
     use util::HASH_SIZE;
 
     #[test]
@@ -70,5 +67,17 @@ mod tests {
             }
         }
     }
-}
 
+    #[test]
+    fn parse_three() {
+        ChoiceVec::parse_choice_vec("1,2,3", 3).unwrap_err();
+    }
+
+    #[test]
+    fn parse_too_long() {
+        use std::iter::repeat;
+        let raw_vec: Vec<&str> = repeat("1,1").take(HASH_SIZE + 1).collect();
+        let too_long: String = raw_vec.join(":");
+        ChoiceVec::parse_choice_vec(&too_long, 10).unwrap_err();
+    }
+}
