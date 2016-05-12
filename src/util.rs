@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io;
+use std::process::exit;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use std::hash::{Hash, SipHasher, Hasher};
 
@@ -36,6 +37,14 @@ pub fn lower_bits(n: u8, val: u32) -> u32 {
         mask |= 1 << i;
     }
     val & mask
+}
+
+/// Print an error and exit the program with a non-zero status.
+/// Helper function for front-end code.
+pub fn error<S: AsRef<str>>(s: S) -> ! {
+    // TODO: Use stderr instead.
+    println!("{}", s.as_ref());
+    exit(1)
 }
 
 #[cfg(test)]

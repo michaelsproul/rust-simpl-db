@@ -100,7 +100,7 @@ impl<'b> Page<'b> {
         self.data
             .split(|&b| b == 0)
             .filter(|slice| slice.len() > 0)
-            .map(|slice| Tuple::parse(slice))
+            .map(|slice| Tuple::parse_bytes(slice))
             .collect()
     }
 
