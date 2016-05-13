@@ -1,9 +1,10 @@
 [package]
 name = "malh"
 version = "0.1.0"
-authors = ["Michael Sproul <micsproul@gmail.com>"]
+authors = ["Michael Sproul <micsproul@gmail.com>", "Angus Thomsen <aksthomsen@gmail.com>"]
 
 [dependencies]
 byteorder = "0.5.1"
 log = "0.3.6"
 env_logger = "0.3.3"
+rand = "0.3.14"

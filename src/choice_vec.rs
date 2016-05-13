@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io;
+use rand::{self, Rng};
 use byteorder::{ReadBytesExt, WriteBytesExt};
 
 use util::*;
@@ -32,8 +33,26 @@ impl ChoiceVec {
         // Copy in the provided bits.
         cv.data[0 .. given_bits.len()].clone_from_slice(&given_bits[..]);
 
-        // TODO: Generate the rest.
+        // Generate the rest.
+        cv.generate_from(attrs, given_bits.len());
+
         cv
+    }
+
+    /// Generate all entries of the choice vector from index `start` onwards.
+    fn generate_from(&mut self, num_attrs: u64, start: usize) {
+        let mut rng = rand::thread_rng();
+
+        for i in start..HASH_SIZE {
+            loop {
+                let (attr, bit) = (rng.gen::<u64>() % num_attrs, rng.gen::<u8>() % HASH_SIZE as u8);
+                if !(&self.data[..i]).contains(&(attr, bit)) {
+                    self.data[i] = (attr, bit);
+                    trace!("Generated entry: ({}, {})", attr, bit);
+                    break;
+                }
+            }
+        }
     }
 
     pub fn parse(input: &str, attr_count: u64) -> Result<ChoiceVec, ParseError> {
@@ -83,8 +102,8 @@ mod tests {
     fn parse_1_n_2s() {
         match ChoiceVec::parse("1,2:1,2", 2) {
             Ok(result) => {
-                let expect = ChoiceVec::new(vec![(1, 2), (1, 2)], 2);
-                assert_eq!(result.data, expect.data);
+                let expect = vec![(1, 2), (1, 2)];
+                assert_eq!(&result.data[..2], &expect[..]);
             },
             Err(reason) => {
                 panic!("failed to parse, because {:?}", reason);
@@ -116,5 +135,14 @@ mod tests {
         ChoiceVec::parse("0,31", 1).unwrap();
         ChoiceVec::parse("0,32", 1).unwrap_err();
         ChoiceVec::parse("0,33", 1).unwrap_err();
+    }
+
+    // This case should be the slowest for generating a choice vec, as the
+    // fraction of the search space that's invalid each iteration is maximised.
+    // After 31 bits have been generated, there's a 1/32 chance of a correct guess.
+    // It doesn't seem too bad.
+    #[test]
+    fn pathological_generate() {
+        assert_eq!(ChoiceVec::new(vec![], 1).data.len(), HASH_SIZE);
     }
 }
