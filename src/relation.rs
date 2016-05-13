@@ -48,15 +48,20 @@ impl OpenMode {
 
 impl Relation {
     /// Create a new relation on disk.
-    pub fn new(name: &str, num_attrs: u64, num_pages: u64, depth: u64, choice_vec: ChoiceVec)
-    -> io::Result<()>
+    pub fn new(name: &str, num_attrs: u64, est_num_pages: u64, choice_vec: ChoiceVec)
+    -> Result<(), BoxError>
     {
         if Relation::exists(name) {
-            return Err(io::Error::new(
-                io::ErrorKind::AlreadyExists,
-                format!("Relation already exists: {}", name)
-            ));
+            try!(Err(format!("relation already exists: {}", name)))
         }
+
+        if num_attrs == 0 {
+            try!(Err("number of attributes can't be zero"));
+        }
+
+        // Compute the depth and number of pages to use based on the user's estimate.
+        let (depth, num_pages) = get_depth_and_num_pages(est_num_pages);
+
         // Create new relation struct and associated files.
         let r = Relation {
             num_attrs: num_attrs,
@@ -78,7 +83,8 @@ impl Relation {
         }
 
         // Write metadata.
-        r.close()
+        try!(r.close());
+        Ok(())
     }
 
     /// Open an existing relation for reading or writing.

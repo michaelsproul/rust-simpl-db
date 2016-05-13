@@ -2,13 +2,15 @@ use std::fs::File;
 use std::io;
 use std::env;
 use std::process::exit;
+use std::error::Error;
 use std::hash::{Hash, SipHasher, Hasher};
 
-use env_logger::{self, LogBuilder};
+use env_logger::LogBuilder;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
-
 pub const HASH_SIZE: usize = 32;
+
+pub type BoxError = Box<Error + Send + Sync>;
 
 pub fn read_u64(mut f: &File) -> io::Result<u64> {
     f.read_u64::<BigEndian>()
@@ -60,6 +62,16 @@ pub fn enable_logging() {
     builder.init().unwrap();
 }
 
+// Round a user-supplied number of pages up to the nearest 2^n.
+// Return (n, 2^n).
+pub fn get_depth_and_num_pages(num_pages: u64) -> (u64, u64) {
+    if num_pages == 0 {
+        return (0, 1);
+    }
+    let n = (num_pages as f64).log2().ceil() as u64;
+    (n, 1 << n)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -76,5 +88,14 @@ mod test {
     #[test]
     fn test_lower_bits() {
         assert_eq!(lower_bits(2, 0b111101), 0b01);
+    }
+
+    #[test]
+    fn round_pages() {
+        assert_eq!(get_depth_and_num_pages(0), (0, 1));
+        assert_eq!(get_depth_and_num_pages(1), (0, 1));
+        assert_eq!(get_depth_and_num_pages(2), (1, 2));
+        assert_eq!(get_depth_and_num_pages(3), (2, 4));
+        assert_eq!(get_depth_and_num_pages(6), (3, 8));
     }
 }

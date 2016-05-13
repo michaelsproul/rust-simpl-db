@@ -6,6 +6,8 @@ use util::*;
 
 pub type ChoiceEntry = (u64, u8);
 
+/// Choice Vector struct.
+/// We index attributes from 0.
 #[derive(Debug, Clone)]
 pub struct ChoiceVec {
     pub data: [ChoiceEntry; HASH_SIZE],
@@ -16,8 +18,9 @@ pub enum ParseError {
     NumberUnparsable,
     TooManyTuples,
     MissingNumError(u64),
-    InvalidAttr(u8),
-    InvalidEntry
+    InvalidAttr(u64),
+    InvalidEntry,
+    InvalidBit(u8)
 }
 
 impl ChoiceVec {
@@ -33,10 +36,8 @@ impl ChoiceVec {
         cv
     }
 
-    pub fn parse_choice_vec(input: &str, attr_count: u8) -> Result<ChoiceVec, ParseError> {
-        let mut c_vector = ChoiceVec {
-            data: [(0, 0); HASH_SIZE]
-        };
+    pub fn parse(input: &str, attr_count: u64) -> Result<ChoiceVec, ParseError> {
+        let mut given_bits = vec![];
 
         for (i, entry) in input.split(':').enumerate() {
             if i >= HASH_SIZE { return Err(ParseError::TooManyTuples) }
@@ -44,13 +45,14 @@ impl ChoiceVec {
             if split.len() != 2 {
                 return Err(ParseError::InvalidEntry);
             }
-            let l = try!(split[0].parse().or_else(|_| Err(ParseError::NumberUnparsable)));
-            let r = try!(split[1].parse().or_else(|_| Err(ParseError::NumberUnparsable)));
-            if r > attr_count { return Err(ParseError::InvalidAttr(r)) }
-            c_vector.data[i] = (l, r);
+            let l: u64 = try!(split[0].parse().or_else(|_| Err(ParseError::NumberUnparsable)));
+            let r: u8 = try!(split[1].parse().or_else(|_| Err(ParseError::NumberUnparsable)));
+            if l >= attr_count { return Err(ParseError::InvalidAttr(l)) }
+            if r as usize >= HASH_SIZE { return Err(ParseError::InvalidBit(r)) }
+            given_bits.push((l, r));
         }
 
-        Ok(c_vector)
+        Ok(ChoiceVec::new(given_bits, attr_count))
     }
 
     pub fn write(&self, mut f: &File) -> io::Result<()> {
@@ -79,7 +81,7 @@ mod tests {
 
     #[test]
     fn parse_1_n_2s() {
-        match ChoiceVec::parse_choice_vec("1,2:1,2", 2) {
+        match ChoiceVec::parse("1,2:1,2", 2) {
             Ok(result) => {
                 let expect = ChoiceVec::new(vec![(1, 2), (1, 2)], 2);
                 assert_eq!(result.data, expect.data);
@@ -92,7 +94,7 @@ mod tests {
 
     #[test]
     fn parse_three() {
-        ChoiceVec::parse_choice_vec("1,2,3", 3).unwrap_err();
+        ChoiceVec::parse("1,2,3", 3).unwrap_err();
     }
 
     #[test]
@@ -100,6 +102,19 @@ mod tests {
         use std::iter::repeat;
         let raw_vec: Vec<&str> = repeat("1,1").take(HASH_SIZE + 1).collect();
         let too_long: String = raw_vec.join(":");
-        ChoiceVec::parse_choice_vec(&too_long, 10).unwrap_err();
+        ChoiceVec::parse(&too_long, 10).unwrap_err();
+    }
+
+    #[test]
+    fn parse_attr_too_high() {
+        ChoiceVec::parse("50,1", 1).unwrap_err();
+        ChoiceVec::parse("1,1", 1).unwrap_err();
+    }
+
+    #[test]
+    fn parse_bit_too_high() {
+        ChoiceVec::parse("0,31", 1).unwrap();
+        ChoiceVec::parse("0,32", 1).unwrap_err();
+        ChoiceVec::parse("0,33", 1).unwrap_err();
     }
 }
