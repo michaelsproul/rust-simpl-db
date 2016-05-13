@@ -2,6 +2,7 @@ use std::path::Path;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Seek, SeekFrom};
 use std::collections::LinkedList;
+use std::error::Error;
 
 use choice_vec::*;
 use page::{Page, PAGE_SIZE, NO_OVFLOW};
@@ -46,6 +47,19 @@ impl OpenMode {
     }
 }
 
+// Automatically write relation metadata to disk when a relation goes out of scope.
+impl Drop for Relation {
+    fn drop(&mut self) {
+        trace!("Running relation destructor.");
+        if self.mode == Writing {
+            if let Err(e) = self.write_info_file() {
+                error!("Error: unable to write relation metadata, relation info may be corrupt.");
+                error!("Reason: {}, {}", e, e.description());
+            }
+        }
+    }
+}
+
 impl Relation {
     /// Create a new relation on disk.
     pub fn new(name: &str, num_attrs: u64, est_num_pages: u64, choice_vec: ChoiceVec)
@@ -83,7 +97,7 @@ impl Relation {
         }
 
         // Write metadata.
-        try!(r.close());
+        drop(r);
         Ok(())
     }
 
@@ -321,11 +335,6 @@ impl Relation {
         try!(write_u64(f, self.num_pages));
         try!(write_u64(f, self.num_tuples));
         try!(self.choice_vec.write(f));
-        Ok(())
-    }
-
-    pub fn close(mut self) -> io::Result<()> {
-        try!(self.write_info_file());
         Ok(())
     }
 }

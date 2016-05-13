@@ -45,13 +45,6 @@ pub fn lower_bits(n: u8, val: u32) -> u32 {
     val & mask
 }
 
-/// Print an error and exit the program with a non-zero status.
-/// Helper function for front-end code.
-pub fn error<S: AsRef<str>>(s: S) -> ! {
-    error!("{}", s.as_ref());
-    exit(1)
-}
-
 /// Enable logging.
 pub fn enable_logging() {
     let mut builder = LogBuilder::new();
@@ -70,6 +63,16 @@ pub fn get_depth_and_num_pages(num_pages: u64) -> (u64, u64) {
     }
     let n = (num_pages as f64).log2().ceil() as u64;
     (n, 1 << n)
+}
+
+/// Run a main function that returns a Result.
+pub fn run_main(real_main: fn() -> Result<(), BoxError>) -> ! {
+    let mut exit_code = 0;
+    if let Err(e) = real_main() {
+        error!("{}", e);
+        exit_code = 1;
+    }
+    exit(exit_code);
 }
 
 #[cfg(test)]
