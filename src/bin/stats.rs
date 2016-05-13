@@ -11,7 +11,6 @@ fn main() {
 }
 
 fn stats() -> Result<(), BoxError> {
-    enable_logging();
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
         try!(Err("Usage: stats <relation name>"));

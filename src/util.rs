@@ -67,6 +67,7 @@ pub fn get_depth_and_num_pages(num_pages: u64) -> (u64, u64) {
 
 /// Run a main function that returns a Result.
 pub fn run_main(real_main: fn() -> Result<(), BoxError>) -> ! {
+    enable_logging();
     let mut exit_code = 0;
     if let Err(e) = real_main() {
         error!("{}", e);

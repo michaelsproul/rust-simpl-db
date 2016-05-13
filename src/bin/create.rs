@@ -11,8 +11,6 @@ fn main() {
 }
 
 fn create() -> Result<(), BoxError> {
-    enable_logging();
-
     let args: Vec<String> = env::args().collect();
     if args.len() != 5 {
         try!(Err("Usage: create <name> <num attrs> <num pages> <choice vec>"));

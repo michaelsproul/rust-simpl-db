@@ -12,7 +12,6 @@ fn main() {
 }
 
 fn insert() -> Result<(), BoxError> {
-    enable_logging();
     if env::args().len() != 2 {
         try!(Err("Usage: insert <relation>"));
     }

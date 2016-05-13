@@ -14,4 +14,4 @@ $ RUST_LOG=trace ./create
 $ env RUST_LOG=trace ./create
 ```
 
-To enable logging for a new front-end binary use `util::enable_logging`.
+To enable logging for a new front-end binary use `run_main`.
