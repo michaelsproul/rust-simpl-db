@@ -13,6 +13,7 @@ pub struct PartialHash {
 
 pub struct Iter {
     current: u32,
+    depth: u8,
     hash: u32,
     mask: u32,
     max: u32,
@@ -28,7 +29,7 @@ impl PartialHash {
         return self.mask == FULL_MASK;
     }
 
-    pub fn ids_within(&self, depth: u32) -> Iter {
+    pub fn ids_within(&self, depth: u8) -> Iter {
         return Iter::new(self, depth);
     }
 
@@ -66,11 +67,11 @@ impl Iterator for Iter {
         }
 
         let mut page_id = self.hash;
-        let mut r_cursor = 0;
-        let mut w_cursor = 0;
+        let mut r_cursor = 0u8;
+        let mut w_cursor = 0u8;
 
-        while (1 << w_cursor) < self.current {
-            if ith_bit(w_cursor, self.mask) == 1 {
+        while w_cursor < self.depth {
+            if ith_bit(w_cursor, self.mask) == 0 {
                 page_id |= ith_bit(r_cursor, self.current) << w_cursor;
                 r_cursor += 1;
             }
@@ -83,7 +84,7 @@ impl Iterator for Iter {
 }
 
 impl Iter {
-    fn new(ma_hash: &PartialHash, depth: u32) -> Self {
+    fn new(ma_hash: &PartialHash, depth: u8) -> Self {
         let mut iterations = 1;
         let mut iter_mask = 0;
 
@@ -97,8 +98,9 @@ impl Iter {
 
         return Iter {
             current: 0,
-            hash: ma_hash.hash | iter_mask,
-            mask: !ma_hash.mask | iter_mask,
+            depth: depth,
+            hash: ma_hash.hash & iter_mask & ma_hash.mask,
+            mask: ma_hash.mask & iter_mask,
             max: iterations,
         };
     }
@@ -189,5 +191,16 @@ mod tests {
             }
             assert!(iter.next().is_none());
         }
+    }
+
+
+    #[test]
+    fn iter_yields_correct_values() {
+        let mut iter = Iter::new(&PartialHash { hash: FULL_MASK, mask: 0b100 }, 3);
+        assert_eq!(iter.next(), Some(0b100));
+        assert_eq!(iter.next(), Some(0b101));
+        assert_eq!(iter.next(), Some(0b110));
+        assert_eq!(iter.next(), Some(0b111));
+        assert_eq!(iter.next(), None);
     }
 }
