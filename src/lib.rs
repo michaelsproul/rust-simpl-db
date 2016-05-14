@@ -8,5 +8,5 @@ pub mod relation;
 pub mod page;
 pub mod choice_vec;
 pub mod util;
-pub mod ma_hash;
+pub mod partial_hash;
 pub mod tuple;

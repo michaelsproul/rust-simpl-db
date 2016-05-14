@@ -6,20 +6,20 @@ pub const FULL_MASK: u32 = 0b11111111_11111111_11111111_11111111;
 
 // Representation of a hash value where some bits might be unknown.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct MAHash {
+pub struct PartialHash {
     pub hash: u32,
     pub mask: u32,
 }
 
-pub struct IDIter {
-    pub current: u32,
-    pub hash: u32,
-    pub mask: u32,
-    pub max: u32,
+pub struct Iter {
+    current: u32,
+    hash: u32,
+    mask: u32,
+    max: u32,
 }
 
 
-impl MAHash {
+impl PartialHash {
     pub fn match_hash(&self, other_hash: u32) -> bool {
         return (other_hash & self.mask) == self.hash;
     }
@@ -28,11 +28,11 @@ impl MAHash {
         return self.mask == FULL_MASK;
     }
 
-    pub fn ids_within(&self, depth: u32) -> IDIter {
-        return IDIter::new(self, depth);
+    pub fn ids_within(&self, depth: u32) -> Iter {
+        return Iter::new(self, depth);
     }
 
-    pub fn from_query(query: &Query, choice: &ChoiceVec) -> MAHash {
+    pub fn from_query(query: &Query, choice: &ChoiceVec) -> PartialHash {
         let mut query_hash: u32 = 0;
         let mut query_mask: u32 = FULL_MASK;
 
@@ -48,12 +48,12 @@ impl MAHash {
             }
         }
 
-        return MAHash { hash: query_hash, mask: query_mask };
+        return PartialHash { hash: query_hash, mask: query_mask };
     }
 }
 
 
-impl Iterator for IDIter {
+impl Iterator for Iter {
     type Item = u32;
 
     fn next(&mut self) -> Option<u32> {
@@ -82,8 +82,8 @@ impl Iterator for IDIter {
     }
 }
 
-impl IDIter {
-    fn new(ma_hash: &MAHash, depth: u32) -> Self {
+impl Iter {
+    fn new(ma_hash: &PartialHash, depth: u32) -> Self {
         let mut iterations = 1;
         let mut iter_mask = 0;
 
@@ -91,11 +91,11 @@ impl IDIter {
             let position = 1 << i;
             iter_mask |= position;
             if ma_hash.mask & position == 0 {
-                iterations *= 2;
+                iterations <<= 1;
             }
         }
 
-        return IDIter {
+        return Iter {
             current: 0,
             hash: ma_hash.hash | iter_mask,
             mask: !ma_hash.mask | iter_mask,
@@ -107,7 +107,7 @@ impl IDIter {
 
 #[cfg(test)]
 mod tests {
-    use super::{ MAHash, FULL_MASK };
+    use super::{ PartialHash, FULL_MASK, Iter };
     use query::{ Query };
     use tuple::Tuple;
     use choice_vec::ChoiceVec;
@@ -119,7 +119,7 @@ mod tests {
     fn hash_mask_correctness() {
         let query = Query::parse("a,b,c", 3).unwrap();
         let c_vec = ChoiceVec::parse("0,0:1,1:2,2", 3).unwrap();
-        let MAHash { hash, mask } = MAHash::from_query(&query, &c_vec);
+        let PartialHash { hash, mask } = PartialHash::from_query(&query, &c_vec);
         assert_eq!(hash & mask, hash);
         assert_eq!(hash | mask, mask);
     }
@@ -128,7 +128,7 @@ mod tests {
     fn hash_when_known_isnt_0() {
         let query = Query::parse("a,b,c", 3).unwrap();
         let c_vec = ChoiceVec::parse("0,0:1,1:2,2", 3).unwrap();
-        let ma_hash = MAHash::from_query(&query, &c_vec);
+        let ma_hash = PartialHash::from_query(&query, &c_vec);
         assert!(ma_hash.mask != 0);
     }
 
@@ -136,7 +136,7 @@ mod tests {
     fn hash_with_unknown() {
         let query = Query::parse("?,?,?", 3).unwrap();
         let c_vec = ChoiceVec::parse("0,0:1,1:2,2", 3).unwrap();
-        let MAHash { hash, mask } = MAHash::from_query(&query, &c_vec);
+        let PartialHash { hash, mask } = PartialHash::from_query(&query, &c_vec);
         assert_eq!(hash, 0);
         assert_eq!(mask, 0);
     }
@@ -146,7 +146,7 @@ mod tests {
         let c_vec = ChoiceVec::parse("0,0:0,1:1,0:1,1:2,0:2,1", 3).unwrap();
         let tuple = Tuple::parse("a,b,c", 3).unwrap();
         let query = Query::parse("a,b,c", 3).unwrap();
-        let ma_hash = MAHash::from_query(&query, &c_vec);
+        let ma_hash = PartialHash::from_query(&query, &c_vec);
         assert_eq!(tuple.hash(&c_vec), ma_hash.hash);
     }
 
@@ -155,14 +155,39 @@ mod tests {
     #[test]
     fn hash_matching_zero() {
         let num_hash: u32 = 0;
-        let query_hash = MAHash { hash: num_hash, mask: FULL_MASK };
+        let query_hash = PartialHash { hash: num_hash, mask: FULL_MASK };
         assert!(query_hash.match_hash(num_hash));
     }
 
     #[test]
     fn hash_matching_non_zero() {
         let num_hash = random::<u32>();
-        let query_hash = MAHash { hash: num_hash, mask: FULL_MASK };
+        let query_hash = PartialHash { hash: num_hash, mask: FULL_MASK };
         assert!(query_hash.match_hash(num_hash));
+    }
+
+    // hash iter
+
+    #[test]
+    fn iter_with_no_ambiguities() {
+        let mut iter = Iter::new(&PartialHash { hash: 0, mask: FULL_MASK }, 3);
+        assert!(iter.next().is_some());
+        assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn iter_with_n_ambiguity_has_correct_number_iterations() {
+        for i in 0..16 {
+            let mut mask = FULL_MASK;
+            for j in 0..i {
+                mask &= !(1 << j);
+            }
+
+            let mut iter = Iter::new(&PartialHash { hash: 0, mask: mask }, 32);
+            for _ in 0 .. (1 << i) {
+                assert!(iter.next().is_some());
+            }
+            assert!(iter.next().is_none());
+        }
     }
 }
