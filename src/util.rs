@@ -10,6 +10,8 @@ use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
 pub const HASH_SIZE: usize = 32;
 
+pub const FULL_MASK: u32 = 0b11111111_11111111_11111111_11111111;
+
 pub type BoxError = Box<Error + Send + Sync>;
 
 pub fn read_u64(mut f: &File) -> io::Result<u64> {
