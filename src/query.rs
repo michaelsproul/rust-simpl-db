@@ -1,4 +1,4 @@
-use util::{hash as util_hash};
+use util::{hash as util_hash, bit as ith_bit};
 use choice_vec::ChoiceVec;
 
 
@@ -38,9 +38,8 @@ impl<'a> Query<'a> {
         for (q_bit, &(a_index, a_bit)) in choice.data.iter().enumerate() {
             let a_hash: u32 = *unsafe { attr_hashs.get_unchecked(a_index as usize) };
             if a_hash != 0 {
-                let bit = (a_hash & (1 << a_bit)) >> a_bit;
-                query_hash |= bit << q_bit;
-                query_mask |= 1   << q_bit;
+                query_hash |= ith_bit(a_bit, a_hash) << q_bit;
+                query_mask |= 1 << q_bit;
             }
         }
 
