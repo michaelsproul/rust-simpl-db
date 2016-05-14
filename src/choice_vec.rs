@@ -1,4 +1,5 @@
 use std::fs::File;
+use std::slice;
 use std::io;
 use rand::{self, Rng};
 use byteorder::{ReadBytesExt, WriteBytesExt};
@@ -90,6 +91,10 @@ impl ChoiceVec {
             data[i] = (attr, val);
         }
         Ok(ChoiceVec { data: data })
+    }
+
+    pub fn iter(&self) -> slice::Iter<ChoiceEntry> {
+        return self.data.iter();
     }
 }
 
