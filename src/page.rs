@@ -28,7 +28,7 @@ pub struct Page<'a> {
 
 impl<'b> Page<'b> {
     pub fn new<'a>(file: &'a File) -> io::Result<Page<'a>> {
-        let id = try!(next_page_id(file));
+        let id = try!(get_next_page_id(file));
         Ok(Page::empty(file, id))
     }
 
@@ -154,7 +154,7 @@ fn empty_data_block() -> Box<[u8; PAGE_DATA_SIZE]> {
 }
 
 // Fetch the Page ID of the next page to be added to a data file.
-fn next_page_id(file: &File) -> io::Result<u64> {
+pub fn get_next_page_id(file: &File) -> io::Result<u64> {
     let file_length = try!(file.metadata().map(|m| m.len()));
     Ok(file_length / (PAGE_SIZE as u64))
 }

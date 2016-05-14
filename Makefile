@@ -1,5 +1,8 @@
-all:
+all: gendata
 	cargo build --release
+
+gendata:
+	make -C reference gendata
 
 debug:
 	cargo build
@@ -10,3 +13,5 @@ test:
 clean:
 	rm -rf *.data *.info *.ovflow
 	cargo clean
+
+.PHONY: gendata

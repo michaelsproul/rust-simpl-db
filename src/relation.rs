@@ -5,7 +5,7 @@ use std::collections::LinkedList;
 use std::error::Error;
 
 use choice_vec::*;
-use page::{Page, PAGE_SIZE, NO_OVFLOW};
+use page::{Page, get_next_page_id, PAGE_SIZE, NO_OVFLOW};
 use tuple::Tuple;
 use util::*;
 
@@ -198,11 +198,11 @@ impl Relation {
             try!(Relation::load_next_page(next_page_id, ovflow_file, tuple_cache, spare_pages));
             spare_pages.pop_front().expect("Load next page didn't work")
         }
-        // Impossible case, as (k_init + 1) <= (k_after + 2) <= (k_init + 2)
-        // where k_init is the # of initial overflow pages and k_after is the # of overflow pages
-        // after the split.
+        // In this case (probably rare), we've run out of overflow pages from before the split.
+        // We could scan the overflow file for an unused page here, but instead we tack another
+        // one on the end.
         else {
-            unreachable!("There are pages around, you're just not looking hard enough.")
+            try!(get_next_page_id(ovflow_file))
         };
 
         // Close the old storage page.
@@ -307,10 +307,10 @@ impl Relation {
 
         self.num_pages += 1;
 
-        // If there's a left-over overflow page, zero it.
-        assert!(spare_pages.len() <= 1);
-        if let Some(spare_page) = spare_pages.pop_front() {
-            debug!("Writing left-over page.");
+        // If there are left-over overflow pages, zero them.
+        // NOTE: This is a source of fragmentation in the overflow file.
+        debug!("Spare pages left are: {:?}", spare_pages);
+        for spare_page in spare_pages {
             let mut leftover_page = Page::empty(&self.ovflow_file, spare_page);
             try!(leftover_page.write());
         }

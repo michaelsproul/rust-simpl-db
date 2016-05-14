@@ -23,8 +23,8 @@ int main(int argc, char **argv)
 
 	// how many tuples
 	ntups = atoi(argv[1]);
-	if (ntups < 1 || ntups > 100000) {
-		sprintf(err, "Invalid #tuples: %d (must be 0 < # < 10^6)", ntups);
+	if (ntups < 1 || ntups > 100000000) {
+		sprintf(err, "Invalid #tuples: %d (must be 0 < # < 10^8)", ntups);
 		fatal("", err);
 	}
 

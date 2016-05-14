@@ -2,3 +2,7 @@ target
 *.ovflow
 *.info
 *.data
+*.o
+*.swp
+bindata
+reference/gendata
