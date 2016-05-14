@@ -11,14 +11,14 @@ pub struct PartialHash {
     pub mask: u32,
 }
 
+#[derive(Debug)]
 pub struct Iter {
     current: u32,
     depth: u8,
-    hash: u32,
+    init: u32,
     mask: u32,
     max: u32,
 }
-
 
 impl PartialHash {
     pub fn match_hash(&self, other_hash: u32) -> bool {
@@ -29,7 +29,7 @@ impl PartialHash {
         return self.mask == FULL_MASK;
     }
 
-    pub fn ids_within(&self, depth: u8) -> Iter {
+    pub fn possible_ids(&self, depth: u8) -> Iter {
         return Iter::new(self, depth);
     }
 
@@ -66,7 +66,7 @@ impl Iterator for Iter {
             return None;
         }
 
-        let mut page_id = self.hash;
+        let mut page_id = self.init;
         let mut r_cursor = 0u8;
         let mut w_cursor = 0u8;
 
@@ -99,7 +99,7 @@ impl Iter {
         return Iter {
             current: 0,
             depth: depth,
-            hash: ma_hash.hash & iter_mask & ma_hash.mask,
+            init: ma_hash.hash & iter_mask & ma_hash.mask,
             mask: ma_hash.mask & iter_mask,
             max: iterations,
         };
