@@ -32,7 +32,7 @@ impl MAHash {
                 query_hash |= ith_bit(a_bit, a_hash) << q_bit;
             }
             else {
-                query_mask |= 1 << q_bit;
+                query_mask &= !(1 << q_bit);
             }
         }
 
@@ -42,12 +42,11 @@ impl MAHash {
 
 #[cfg(test)]
 mod tests {
-    use super::{ MAHash };
-    use query::{ Query, FULL_MASK };
+    use super::{ MAHash, FULL_MASK };
+    use query::{ Query };
     use tuple::Tuple;
     use choice_vec::ChoiceVec;
     use rand::random;
-
 
     // hashing
 
@@ -55,7 +54,7 @@ mod tests {
     fn hash_mask_correctness() {
         let query = Query::parse("a,b,c", 3).unwrap();
         let c_vec = ChoiceVec::parse("0,0:1,1:2,2", 3).unwrap();
-        let MAHash { hash, mask } = MAHash::from_query(query, &c_vec);
+        let MAHash { hash, mask } = MAHash::from_query(&query, &c_vec);
         assert_eq!(hash & mask, hash);
         assert_eq!(hash | mask, mask);
     }
@@ -64,15 +63,15 @@ mod tests {
     fn hash_when_known_isnt_0() {
         let query = Query::parse("a,b,c", 3).unwrap();
         let c_vec = ChoiceVec::parse("0,0:1,1:2,2", 3).unwrap();
-        let ma_hash = MAHash::from_query(query, &c_vec);
-        assert!(hash.mask != 0);
+        let ma_hash = MAHash::from_query(&query, &c_vec);
+        assert!(ma_hash.mask != 0);
     }
 
     #[test]
     fn hash_with_unknown() {
         let query = Query::parse("?,?,?", 3).unwrap();
         let c_vec = ChoiceVec::parse("0,0:1,1:2,2", 3).unwrap();
-        let MAHash { hash, mask } = MAHash::from_query(query, &c_vec);
+        let MAHash { hash, mask } = MAHash::from_query(&query, &c_vec);
         assert_eq!(hash, 0);
         assert_eq!(mask, 0);
     }
@@ -82,7 +81,7 @@ mod tests {
         let c_vec = ChoiceVec::parse("0,0:0,1:1,0:1,1:2,0:2,1", 3).unwrap();
         let tuple = Tuple::parse("a,b,c", 3).unwrap();
         let query = Query::parse("a,b,c", 3).unwrap();
-        let ma_hash = MAHash::from_query(query, &c_vec);
+        let ma_hash = MAHash::from_query(&query, &c_vec);
         assert_eq!(tuple.hash(&c_vec), ma_hash.hash);
     }
 

@@ -41,10 +41,10 @@ mod tests {
     #[test]
     fn parse_with_wrong_arg_number() {
         let query_1 = Query::parse("a,b,c", 2);
-        assert!(query_1 == Err(ParseError::AttributeMismatch(3)));
+        assert!(query_1 == Err(ParseError::AttributeMismatch(2, 3)));
 
         let query_2 = Query::parse("a,b,c", 4);
-        assert!(query_2 == Err(ParseError::AttributeMismatch(3)));
+        assert!(query_2 == Err(ParseError::AttributeMismatch(4, 3)));
     }
 
     #[test]
