@@ -8,6 +8,11 @@ pub struct Query<'a> {
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum ParseError {
+    AttributeMismatch(usize, usize),
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct QueryHash {
     pub hash: u32,
     pub mask: u32,
@@ -15,21 +20,22 @@ pub struct QueryHash {
 
 
 impl<'a> Query<'a> {
-    fn parse(input: &'a str, attr_count: usize) -> Option<Query<'a>> {
+    pub fn parse(input: &'a str, attr_count: u64) -> Result<Query<'a>, ParseError> {
         let matches: Vec<Option<&'a str>> = input
             .split(',')
             .map(|x| if x == "?" { None } else { Some(x) })
             .collect();
 
-        if matches.len() == attr_count {
-            return Some(Query { matches: matches });
+        let match_len = matches.len();
+        if match_len == attr_count as usize {
+            return Ok(Query { matches: matches });
         }
         else {
-            return None
+            return Err(ParseError::AttributeMismatch(attr_count as usize, match_len));
         }
     }
 
-    fn ma_hash(&self, choice: &ChoiceVec) -> QueryHash {
+    pub fn ma_hash(&self, choice: &ChoiceVec) -> QueryHash {
         let mut query_hash: u32 = 0;
         let mut query_mask: u32 = 0;
 
@@ -51,7 +57,7 @@ impl<'a> Query<'a> {
 }
 
 impl QueryHash {
-    fn match_hash(&self, other_hash: u32) -> bool {
+    pub fn match_hash(&self, other_hash: u32) -> bool {
         return (other_hash & self.mask) == self.hash;
     }
 }
@@ -59,7 +65,7 @@ impl QueryHash {
 
 #[cfg(test)]
 mod tests {
-    use super::{ Query, QueryHash };
+    use super::{ Query, QueryHash, ParseError };
     use tuple::Tuple;
     use choice_vec::ChoiceVec;
     use rand::random;
@@ -123,22 +129,22 @@ mod tests {
     #[test]
     fn parse_with_correct_arg_number() {
         let query = Query::parse("a,b,c", 3);
-        assert!(query != None);
+        assert!(query.is_ok());
     }
 
     #[test]
     fn parse_with_wrong_arg_number() {
         let query_1 = Query::parse("a,b,c", 2);
-        assert!(query_1 == None);
+        assert!(query_1 == Err(ParseError::AttributeMismatch(3)));
 
         let query_2 = Query::parse("a,b,c", 4);
-        assert!(query_2 == None);
+        assert!(query_2 == Err(ParseError::AttributeMismatch(3)));
     }
 
     #[test]
     fn parse_correctly_identify_unknowns() {
         let query = Query::parse("a,?,c", 3);
-        if let Some(query) = query {
+        if let Ok(query) = query {
             assert!(query.matches[0] != None);
             assert!(query.matches[1] == None);
             assert!(query.matches[2] != None);
