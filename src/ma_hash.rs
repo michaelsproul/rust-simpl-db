@@ -11,6 +11,14 @@ pub struct MAHash {
     pub mask: u32,
 }
 
+pub struct IDIter {
+    pub current: u32,
+    pub hash: u32,
+    pub mask: u32,
+    pub max: u32,
+}
+
+
 impl MAHash {
     pub fn match_hash(&self, other_hash: u32) -> bool {
         return (other_hash & self.mask) == self.hash;
@@ -18,6 +26,10 @@ impl MAHash {
 
     pub fn is_complete(&self) -> bool {
         return self.mask == FULL_MASK;
+    }
+
+    pub fn ids_within(&self, depth: u32) -> IDIter {
+        return IDIter::new(self, depth);
     }
 
     pub fn from_query(query: &Query, choice: &ChoiceVec) -> MAHash {
@@ -39,6 +51,59 @@ impl MAHash {
         return MAHash { hash: query_hash, mask: query_mask };
     }
 }
+
+
+impl Iterator for IDIter {
+    type Item = u32;
+
+    fn next(&mut self) -> Option<u32> {
+        if self.max == 1 && self.current == 0 {
+            self.current += 1;
+            return Some(self.hash);
+        }
+        else if self.max == self.current {
+            return None;
+        }
+
+        let mut page_id = self.hash;
+        let mut r_cursor = 0;
+        let mut w_cursor = 0;
+
+        while (1 << w_cursor) < self.current {
+            if ith_bit(w_cursor, self.mask) == 1 {
+                page_id |= ith_bit(r_cursor, self.current) << w_cursor;
+                r_cursor += 1;
+            }
+            w_cursor += 1;
+        }
+
+        self.current += 1;
+        return Some(page_id);
+    }
+}
+
+impl IDIter {
+    fn new(ma_hash: &MAHash, depth: u32) -> Self {
+        let mut iterations = 1;
+        let mut iter_mask = 0;
+
+        for i in 0..depth {
+            let position = 1 << i;
+            iter_mask |= position;
+            if ma_hash.mask & position == 0 {
+                iterations *= 2;
+            }
+        }
+
+        return IDIter {
+            current: 0,
+            hash: ma_hash.hash | iter_mask,
+            mask: !ma_hash.mask | iter_mask,
+            max: iterations,
+        };
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
