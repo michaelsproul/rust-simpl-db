@@ -50,11 +50,23 @@ impl<'a> Query<'a> {
     }
 }
 
+impl QueryHash {
+    fn match_hash(&self, other_hash: u32) -> bool {
+        return (other_hash & self.mask) == self.hash;
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
     use super::{ Query, QueryHash };
+    use tuple::Tuple;
     use choice_vec::ChoiceVec;
+    use rand::random;
+
+    const FULL_MASK: u32 = 0b11111111_11111111_11111111_11111111;
+
+    // hashing
 
     #[test]
     fn hash_mask_correctness() {
@@ -69,8 +81,8 @@ mod tests {
     fn hash_when_known_isnt_0() {
         let query = Query::parse("a,b,c", 3).unwrap();
         let c_vec = ChoiceVec::parse("0,0:1,1:2,2", 3).unwrap();
-        let QueryHash { hash, mask } = query.ma_hash(&c_vec);
-        assert!(mask != 0);
+        let hash = query.ma_hash(&c_vec);
+        assert!(hash.mask != 0);
     }
 
     #[test]
@@ -81,6 +93,32 @@ mod tests {
         assert_eq!(hash, 0);
         assert_eq!(mask, 0);
     }
+
+    #[test]
+    fn query_hash_same_as_tuple_hash() {
+        let c_vec = ChoiceVec::parse("0,0:0,1:1,0:1,1:2,0:2,1", 3).unwrap();
+        let tuple = Tuple::parse("a,b,c", 3).unwrap();
+        let query = Query::parse("a,b,c", 3).unwrap();
+        assert_eq!(tuple.hash(&c_vec), query.ma_hash(&c_vec).hash);
+    }
+
+    // matching hashed query
+
+    #[test]
+    fn hash_matching_zero() {
+        let num_hash: u32 = 0;
+        let query_hash = QueryHash { hash: num_hash, mask: FULL_MASK };
+        assert!(query_hash.match_hash(num_hash));
+    }
+
+    #[test]
+    fn hash_matching_non_zero() {
+        let num_hash = random::<u32>();
+        let query_hash = QueryHash { hash: num_hash, mask: FULL_MASK };
+        assert!(query_hash.match_hash(num_hash));
+    }
+
+    // query parsing matching
 
     #[test]
     fn parse_with_correct_arg_number() {
