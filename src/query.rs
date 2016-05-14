@@ -1,11 +1,6 @@
-use util::{hash as util_hash, bit as ith_bit, FULL_MASK };
-use choice_vec::ChoiceVec;
-use partial_hash::PartialHash;
-
-
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Query<'a> {
-    matches: Vec<Option<&'a str>>
+    pub matches: Vec<Option<&'a str>>
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -27,30 +22,6 @@ impl<'a> Query<'a> {
         else {
             return Err(ParseError::AttributeMismatch(attr_count as usize, match_len));
         }
-    }
-
-    pub fn ma_hash(&self, choice: &ChoiceVec) -> PartialHash {
-
-
-        let mut query_hash: u32 = 0;
-        let mut query_mask: u32 = FULL_MASK;
-
-        let hash_match = |&a| match a { None => 0, Some(a) => util_hash(a) };
-        let attr_hashs: Vec<u32> = self.matches.iter().map(hash_match).collect();
-        for (q_bit, &(a_index, a_bit)) in choice.data.iter().enumerate() {
-            let a_hash: u32 = *unsafe { attr_hashs.get_unchecked(a_index as usize) };
-            if a_hash != 0 {
-                query_hash |= ith_bit(a_bit, a_hash) << q_bit;
-            }
-            else {
-                query_mask |= 1 << q_bit;
-            }
-        }
-
-        return PartialHash {
-            hash: query_hash,
-            mask: query_mask,
-        };
     }
 }
 
