@@ -60,7 +60,7 @@ impl Iterator for Iter {
     fn next(&mut self) -> Option<u32> {
         if self.max == 1 && self.current == 0 {
             self.current += 1;
-            return Some(self.hash);
+            return Some(self.init);
         }
         else if self.max == self.current {
             return None;
