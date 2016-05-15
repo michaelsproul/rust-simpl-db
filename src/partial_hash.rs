@@ -18,6 +18,7 @@ pub struct Iter {
     init: u32,
     mask: u32,
     max: u32,
+    num_pages: u32
 }
 
 impl PartialHash {
@@ -29,8 +30,8 @@ impl PartialHash {
         return self.mask == FULL_MASK;
     }
 
-    pub fn possible_ids(&self, depth: u8) -> Iter {
-        return Iter::new(self, depth);
+    pub fn possible_ids(&self, depth: u8, num_pages: u32) -> Iter {
+        return Iter::new(self, depth + 1, num_pages);
     }
 
     pub fn from_query(query: &Query, choice: &ChoiceVec) -> PartialHash {
@@ -58,9 +59,10 @@ impl Iterator for Iter {
     type Item = u32;
 
     fn next(&mut self) -> Option<u32> {
+        trace!("Iter next, state is: {:?}", self);
         if self.max == 1 && self.current == 0 {
             self.current += 1;
-            return Some(self.hash);
+            return Some(self.init);
         }
         else if self.max == self.current {
             return None;
@@ -79,12 +81,16 @@ impl Iterator for Iter {
         }
 
         self.current += 1;
-        return Some(page_id);
+        if page_id >= self.num_pages {
+            None
+        } else {
+            Some(page_id)
+        }
     }
 }
 
 impl Iter {
-    fn new(ma_hash: &PartialHash, depth: u8) -> Self {
+    fn new(ma_hash: &PartialHash, depth: u8, num_pages: u32) -> Self {
         let mut iterations = 1;
         let mut iter_mask = 0;
 
@@ -102,6 +108,7 @@ impl Iter {
             init: ma_hash.hash & iter_mask & ma_hash.mask,
             mask: ma_hash.mask & iter_mask,
             max: iterations,
+            num_pages: num_pages
         };
     }
 }
@@ -172,7 +179,7 @@ mod tests {
 
     #[test]
     fn iter_with_no_ambiguities() {
-        let mut iter = Iter::new(&PartialHash { hash: 0, mask: FULL_MASK }, 3);
+        let mut iter = Iter::new(&PartialHash { hash: 0, mask: FULL_MASK }, 3, 8);
         assert!(iter.next().is_some());
         assert!(iter.next().is_none());
     }
@@ -185,7 +192,7 @@ mod tests {
                 mask &= !(1 << j);
             }
 
-            let mut iter = Iter::new(&PartialHash { hash: 0, mask: mask }, 32);
+            let mut iter = Iter::new(&PartialHash { hash: 0, mask: mask }, 32, 1 << 31);
             for _ in 0 .. (1 << i) {
                 assert!(iter.next().is_some());
             }
@@ -196,11 +203,21 @@ mod tests {
 
     #[test]
     fn iter_yields_correct_values() {
-        let mut iter = Iter::new(&PartialHash { hash: FULL_MASK, mask: 0b100 }, 3);
+        let mut iter = Iter::new(&PartialHash { hash: FULL_MASK, mask: 0b100 }, 3, 8);
         assert_eq!(iter.next(), Some(0b100));
         assert_eq!(iter.next(), Some(0b101));
         assert_eq!(iter.next(), Some(0b110));
         assert_eq!(iter.next(), Some(0b111));
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn iter_linear() {
+        let mut iter = Iter::new(&PartialHash { hash: FULL_MASK, mask: 0b100 }, 3, 6);
+        assert_eq!(iter.next(), Some(0b100));
+        assert_eq!(iter.next(), Some(0b101));
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.next(), None);
         assert_eq!(iter.next(), None);
     }
 }
