@@ -27,7 +27,7 @@ fn insert() -> Result<(), BoxError> {
             .ok_or_else(|| format!("Error: invalid tuple: {}", line)));
 
         try!(relation.insert(tuple).map_err(|e| {
-            format!("Error: unable to insert tuple.\nReason: {}\nTuple: {}", e, line)
+            format!("Error: unable to insert tuple\nReason: {}\nTuple: {}", e, line)
         }));
     }
 

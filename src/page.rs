@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::{self, Read, Write, Seek, SeekFrom};
+use std::io::ErrorKind::InvalidInput;
 use std::collections::LinkedList;
 use util::*;
 use tuple::Tuple;
@@ -147,6 +148,10 @@ impl<'b> Page<'b> {
 
     /// Add a tuple to this page's overflow chain, creating any necessary overflow pages.
     pub fn add_to_overflow(&mut self, ovflow_file: &File, tuple: &[u8]) -> io::Result<()> {
+        if tuple.len() > PAGE_DATA_SIZE {
+            return Err(io::Error::new(InvalidInput, "tuple too large to fit in a page"));
+        }
+
         // If the tuple fits in this page, insert it directly.
         if (self.free_space() as usize) >= tuple.len() {
             assert!(self.add_tuple(tuple));
