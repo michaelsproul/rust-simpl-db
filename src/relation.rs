@@ -150,8 +150,9 @@ impl Relation {
 
     /// Insert a tuple into the relation.
     pub fn insert(&mut self, t: Tuple) -> io::Result<()> {
-        // Expand whenever the resize threshold is hit.
-        if self.num_tuples == self.resize_threshold() {
+        // Expand whenever the resize threshold is hit, so long as the depth is still
+        // less than the size of hashes.
+        if self.num_tuples == self.resize_threshold() && self.depth != HASH_SIZE {
             info!("Resizing the relation.");
             try!(self.grow());
         }
