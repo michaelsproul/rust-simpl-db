@@ -1,22 +1,26 @@
-
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
-struct Query<'a> {
-    segments: Vec<Option<&'a str>>
+pub struct Query<'a> {
+    pub matches: Vec<Option<&'a str>>
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum ParseError {
+    AttributeMismatch(usize, usize),
+}
 
 impl<'a> Query<'a> {
-    fn parse_query(input: &'a str, attr_count: usize) -> Option<Query<'a>> {
-        let segments: Vec<Option<&'a str>> = input
+    pub fn parse(input: &'a str, attr_count: u64) -> Result<Query<'a>, ParseError> {
+        let matches: Vec<Option<&'a str>> = input
             .split(',')
             .map(|x| if x == "?" { None } else { Some(x) })
             .collect();
 
-        if segments.len() == attr_count {
-            return Some(Query { segments: segments });
+        let match_len = matches.len();
+        if match_len == attr_count as usize {
+            return Ok(Query { matches: matches });
         }
         else {
-            return None
+            return Err(ParseError::AttributeMismatch(attr_count as usize, match_len));
         }
     }
 }
@@ -24,32 +28,35 @@ impl<'a> Query<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::Query;
+    use super::{ Query, ParseError };
+
+    // query parsing matching
 
     #[test]
     fn parse_with_correct_arg_number() {
-        let query = Query::parse_query("a,b,c", 3);
-        assert!(query != None);
+        let query = Query::parse("a,b,c", 3);
+        assert!(query.is_ok());
     }
 
     #[test]
     fn parse_with_wrong_arg_number() {
-        let query_1 = Query::parse_query("a,b,c", 2);
-        assert!(query_1 == None);
+        let query_1 = Query::parse("a,b,c", 2);
+        assert!(query_1 == Err(ParseError::AttributeMismatch(2, 3)));
 
-        let query_2 = Query::parse_query("a,b,c", 4);
-        assert!(query_2 == None);
+        let query_2 = Query::parse("a,b,c", 4);
+        assert!(query_2 == Err(ParseError::AttributeMismatch(4, 3)));
     }
 
     #[test]
     fn parse_correctly_identify_unknowns() {
-        let query = Query::parse_query("a,?,c", 3);
-        if let Some(query) = query {
-            assert!(query.segments[0] != None);
-            assert!(query.segments[1] == None);
-            assert!(query.segments[2] != None);
+        let query = Query::parse("a,?,c", 3);
+        if let Ok(query) = query {
+            assert!(query.matches[0] != None);
+            assert!(query.matches[1] == None);
+            assert!(query.matches[2] != None);
         } else {
             panic!();
         }
     }
 }
+
