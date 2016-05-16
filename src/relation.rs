@@ -5,9 +5,11 @@ use std::collections::LinkedList;
 use std::error::Error;
 
 use choice_vec::*;
-use page::{Page, get_next_page_id, PAGE_SIZE, NO_OVFLOW};
+use page::{Page, PageQueryIter, get_next_page_id, PAGE_SIZE, NO_OVFLOW};
 use tuple::Tuple;
 use util::*;
+use query::Query;
+use partial_hash::{PartialHash, PageIdIter};
 
 pub use self::OpenMode::*;
 
@@ -132,6 +134,18 @@ impl Relation {
 
     fn resize_threshold(&self) -> u64 {
         (PAGE_SIZE as u64 / (10 * self.num_attrs)) * self.num_pages
+    }
+
+    /// Select tuples matching a query.
+    pub fn select<'a>(&'a self, query: &'a Query<'a>) -> SelectIter<'a> {
+        let partial_hash = PartialHash::from_query(query, &self.choice_vec);
+        SelectIter {
+            query: query,
+            page_id_iter: partial_hash.possible_ids(self.num_pages as u32 - 1),
+            bucket_iter: None,
+            ovflow_file: &self.ovflow_file,
+            data_file: &self.data_file,
+        }
     }
 
     /// Insert a tuple into the relation.
@@ -336,5 +350,42 @@ impl Relation {
         try!(write_u64(f, self.num_tuples));
         try!(self.choice_vec.write(f));
         Ok(())
+    }
+}
+
+pub struct SelectIter<'a> {
+    /// Query being executed by this iterator.
+    query: &'a Query<'a>,
+    /// Iterator over page IDs that match the query's hash.
+    page_id_iter: PageIdIter,
+    /// Iterator for the current bucket.
+    bucket_iter: Option<PageQueryIter<'a>>,
+    data_file: &'a File,
+    ovflow_file: &'a File
+}
+
+impl<'a> Iterator for SelectIter<'a> {
+    type Item = io::Result<Tuple>;
+
+    fn next(&mut self) -> Option<io::Result<Tuple>> {
+        // Return values from the current bucket iterator, if there are any.
+        let next_item = self.bucket_iter.as_mut().and_then(|iter| iter.next());
+        if next_item.is_some() {
+            return next_item;
+        }
+        // Once it is exhausted, fetch the next page ID and start fetching tuples from it.
+        let next_page_id = match self.page_id_iter.next() {
+            Some(id) => id,
+            None => { return None }
+        };
+        trace!("next_page_id is {:b} ({})", next_page_id, next_page_id);
+        let next_page = match Page::read(self.data_file, next_page_id as u64) {
+            Ok(p) => p,
+            Err(e) => {
+                return Some(Err(e));
+            }
+        };
+        self.bucket_iter = Some(next_page.select(self.query, self.ovflow_file));
+        self.next()
     }
 }

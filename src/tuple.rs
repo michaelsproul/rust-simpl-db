@@ -46,8 +46,12 @@ impl Tuple {
         }
     }
 
+    pub fn to_string(&self) -> String {
+        self.values.join(",")
+    }
+
     pub fn serialise(&self) -> Vec<u8> {
-        let mut result = self.values.join(",").into_bytes();
+        let mut result = self.to_string().into_bytes();
         result.push(0); // NUL byte
         result
     }
