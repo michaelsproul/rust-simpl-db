@@ -3,6 +3,7 @@ use std::io::{self, Read, Write, Seek, SeekFrom};
 use std::collections::LinkedList;
 use util::*;
 use tuple::Tuple;
+use query::Query;
 
 pub const PAGE_SIZE: usize = 1024;
 pub const PAGE_HEADER_SIZE: usize = 8 * 3;
@@ -104,6 +105,28 @@ impl<'b> Page<'b> {
             .collect()
     }
 
+    /// Retrieve all the tuples from this page that match the given query.
+    pub fn get_tuples_matching<'a>(&self, query: &'a Query<'a>) -> LinkedList<Tuple> {
+        // FIXME: De-dupe. Writing iterator types is a collosal pain though.
+        // Perhaps get_tuple_list should be implemented in terms of a null query...
+        self.data
+            .split(|&b| b == 0)
+            .filter(|slice| slice.len() > 0)
+            .map(|slice| Tuple::parse_bytes(slice))
+            .filter(|tuple| query.matches_tuple(tuple))
+            .collect()
+    }
+
+    /// Retrieve all tuples matching a given query from this page AND its overflow.
+    pub fn select<'a>(&self, query: &'a Query<'a>, ovflow_file: &'a File) -> PageQueryIter<'a> {
+        PageQueryIter {
+            query: query,
+            next_page_id: self.ovflow,
+            ovflow_file: ovflow_file,
+            tuple_cache: self.get_tuples_matching(query),
+        }
+    }
+
     /// Add a tuple if one will fit.
     /// Return true if the tuple was added.
     // FIXME: numeric downcasts, should probably just use usize everywhere.
@@ -145,6 +168,42 @@ impl<'b> Page<'b> {
         // If there is an overflow page, try the insert there by recursing.
         let mut ovflow_page = try!(Page::read(ovflow_file, self.ovflow));
         ovflow_page.add_to_overflow(ovflow_file, tuple)
+    }
+}
+
+/// Iterator over all matching tuples in a bucket.
+pub struct PageQueryIter<'a> {
+    query: &'a Query<'a>,
+    /// The ID of the next overflow page to read - initially the first overflow page.
+    next_page_id: u64,
+    ovflow_file: &'a File,
+    /// Tuples read from the bucket that have not yet been yielded.
+    /// Initially contains all the matching tuples from the data page.
+    tuple_cache: LinkedList<Tuple>
+}
+
+impl<'a> Iterator for PageQueryIter<'a> {
+    type Item = io::Result<Tuple>;
+
+    fn next(&mut self) -> Option<io::Result<Tuple>> {
+        // If there's a tuple ready, yield it.
+        if let Some(tuple) = self.tuple_cache.pop_front() {
+            return Some(Ok(tuple));
+        }
+        // If there are no more pages in this bucket, yield None forever.
+        if self.next_page_id == NO_OVFLOW {
+            return None;
+        }
+        // Otherwise, load the next page in the chain and recurse.
+        let page = match Page::read(self.ovflow_file, self.next_page_id) {
+            Ok(p) => p,
+            Err(e) => {
+                return Some(Err(e));
+            }
+        };
+        self.next_page_id = page.ovflow;
+        self.tuple_cache = page.get_tuples_matching(self.query);
+        self.next()
     }
 }
 

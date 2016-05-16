@@ -1,3 +1,5 @@
+use tuple::Tuple;
+
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Query<'a> {
     pub matches: Vec<Option<&'a str>>
@@ -23,12 +25,25 @@ impl<'a> Query<'a> {
             return Err(ParseError::AttributeMismatch(attr_count as usize, match_len));
         }
     }
+
+    pub fn matches_tuple(&self, tuple: &Tuple) -> bool {
+        debug_assert!(self.matches.len() == tuple.values.len());
+        for i in 0..tuple.values.len() {
+            if let Some(query_attr) = self.matches[i] {
+                if query_attr != &tuple.values[i] {
+                    return false;
+                }
+            }
+        }
+        true
+    }
 }
 
 
 #[cfg(test)]
 mod tests {
     use super::{ Query, ParseError };
+    use tuple::Tuple;
 
     // query parsing matching
 
@@ -56,6 +71,18 @@ mod tests {
             assert!(query.matches[2] != None);
         } else {
             panic!();
+        }
+    }
+
+    #[test]
+    fn matching() {
+        let data = [
+            (Query::parse("hello,?", 2), Tuple::parse("hello,world", 2), true),
+            (Query::parse("hello,?", 2), Tuple::parse("world,hello", 2), false),
+            (Query::parse("?", 1), Tuple::parse("wowzas", 1), true)
+        ];
+        for &(ref query, ref tuple, exp) in data.iter() {
+            assert_eq!(query.as_ref().unwrap().matches_tuple(tuple.as_ref().unwrap()), exp);
         }
     }
 }
