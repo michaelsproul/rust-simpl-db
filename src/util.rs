@@ -45,6 +45,18 @@ pub fn lower_bits(n: u8, val: u32) -> u32 {
     val & mask
 }
 
+/// determines the highest set bit of u32
+pub fn highest_set_bit(number: u32) -> u8 {
+    let mut result = 0;
+    let mut iter = number;
+    while iter != 0 {
+        result += 1;
+        iter  >>= 1;
+    }
+    return result;
+}
+
+
 /// Enable logging.
 pub fn enable_logging() {
     let mut builder = LogBuilder::new();
@@ -87,6 +99,18 @@ mod test {
         assert_eq!(bit(2, 0b1100), 1);
         assert_eq!(bit(3, 0b1100), 1);
         assert_eq!(bit(4, 0b1100), 0);
+    }
+
+    #[test]
+    fn test_hsb() {
+        assert_eq!(highest_set_bit(0b0), 0);
+        assert_eq!(highest_set_bit(0b1), 1);
+        assert_eq!(highest_set_bit(0b10), 2);
+        assert_eq!(highest_set_bit(0b100), 3);
+        assert_eq!(highest_set_bit(0b1000), 4);
+        assert_eq!(highest_set_bit(0b1011), 4);
+        assert_eq!(highest_set_bit(0b101011), 6);
+        assert_eq!(highest_set_bit(1 << 31), 32);
     }
 
     #[test]
