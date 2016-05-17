@@ -6,22 +6,22 @@ use util::*;
 use tuple::Tuple;
 use query::Query;
 
-pub const PAGE_SIZE: usize = 1024;
-pub const PAGE_HEADER_SIZE: usize = 8 * 3;
-pub const PAGE_DATA_SIZE: usize = PAGE_SIZE - PAGE_HEADER_SIZE;
-pub const NO_OVFLOW: u64 = 0xffffffffffffffff;
+pub const PAGE_SIZE: u64 = 1024;
+pub const PAGE_HEADER_SIZE: u64 = 4 * 3;
+pub const PAGE_DATA_SIZE: usize = (PAGE_SIZE - PAGE_HEADER_SIZE) as usize;
+pub const NO_OVFLOW: u32 = 0xffffffff;
 
 pub struct Page<'a> {
     /// Page ID for this page - offset within the data file.
-    pub id: u64,
+    pub id: u32,
     /// Data file for this page.
     file: &'a File,
     /// Offset of free space within data.
-    pub free: u64,
+    pub free: u32,
     /// Page ID for an associated overflow page, if one exists (or NO_OFFSET).
-    pub ovflow: u64,
+    pub ovflow: u32,
     /// Number of tuples stored in this page.
-    pub num_tuples: u64,
+    pub num_tuples: u32,
     /// Whether or not this page needs to be written to disk.
     dirty: bool,
     // Actual page data.
@@ -34,7 +34,7 @@ impl<'b> Page<'b> {
         Ok(Page::empty(file, id))
     }
 
-    pub fn empty<'a>(file: &'a File, page_id: u64) -> Page<'a> {
+    pub fn empty<'a>(file: &'a File, page_id: u32) -> Page<'a> {
         Page {
             id: page_id,
             file: file,
@@ -59,15 +59,15 @@ impl<'b> Page<'b> {
         }
     }
 
-    pub fn free_space(&self) -> u64 {
-        (PAGE_DATA_SIZE as u64) - self.free
+    pub fn free_space(&self) -> usize {
+        PAGE_DATA_SIZE - (self.free as usize)
     }
 
-    pub fn read<'a>(mut f: &'a File, page_id: u64) -> io::Result<Page<'a>> {
+    pub fn read<'a>(mut f: &'a File, page_id: u32) -> io::Result<Page<'a>> {
         try!(seek_to_start(f, page_id));
-        let free = try!(read_u64(f));
-        let ovflow = try!(read_u64(f));
-        let num_tuples = try!(read_u64(f));
+        let free = try!(read_u32(f));
+        let ovflow = try!(read_u32(f));
+        let num_tuples = try!(read_u32(f));
 
         let mut page = Page {
             id: page_id,
@@ -88,9 +88,9 @@ impl<'b> Page<'b> {
 
     pub fn write(&mut self) -> io::Result<()> {
         try!(seek_to_start(&self.file, self.id));
-        try!(write_u64(self.file, self.free));
-        try!(write_u64(self.file, self.ovflow));
-        try!(write_u64(self.file, self.num_tuples));
+        try!(write_u32(self.file, self.free));
+        try!(write_u32(self.file, self.ovflow));
+        try!(write_u32(self.file, self.num_tuples));
         try!(self.file.write_all(self.data.as_ref()));
         try!(self.file.flush());
         self.dirty = false;
@@ -132,15 +132,15 @@ impl<'b> Page<'b> {
     /// Return true if the tuple was added.
     // FIXME: numeric downcasts, should probably just use usize everywhere.
     pub fn add_tuple(&mut self, tuple: &[u8]) -> bool {
-        if (self.free_space() as usize) < tuple.len() {
+        if self.free_space() < tuple.len() {
             return false;
         }
-        let new_free = self.free as usize + tuple.len();
+        let new_free = self.free + tuple.len() as u32;
         {
-            let mut dest = &mut self.data[self.free as usize .. new_free];
+            let mut dest = &mut self.data[self.free as usize .. new_free as usize];
             dest.clone_from_slice(tuple);
         }
-        self.free = new_free as u64;
+        self.free = new_free;
         self.num_tuples += 1;
         self.mark_dirty();
         true
@@ -153,7 +153,7 @@ impl<'b> Page<'b> {
         }
 
         // If the tuple fits in this page, insert it directly.
-        if (self.free_space() as usize) >= tuple.len() {
+        if self.free_space() >= tuple.len() {
             assert!(self.add_tuple(tuple));
             try!(self.write());
             return Ok(());
@@ -180,7 +180,7 @@ impl<'b> Page<'b> {
 pub struct PageQueryIter<'a> {
     query: &'a Query<'a>,
     /// The ID of the next overflow page to read - initially the first overflow page.
-    next_page_id: u64,
+    next_page_id: u32,
     ovflow_file: &'a File,
     /// Tuples read from the bucket that have not yet been yielded.
     /// Initially contains all the matching tuples from the data page.
@@ -218,12 +218,12 @@ fn empty_data_block() -> Box<[u8; PAGE_DATA_SIZE]> {
 }
 
 // Fetch the Page ID of the next page to be added to a data file.
-pub fn get_next_page_id(file: &File) -> io::Result<u64> {
+pub fn get_next_page_id(file: &File) -> io::Result<u32> {
     let file_length = try!(file.metadata().map(|m| m.len()));
-    Ok(file_length / (PAGE_SIZE as u64))
+    Ok((file_length / PAGE_SIZE) as u32)
 }
 
 /// Seek to the start of a page.
-fn seek_to_start(mut f: &File, page_id: u64) -> io::Result<u64> {
-    f.seek(SeekFrom::Start(page_id * (PAGE_SIZE as u64)))
+fn seek_to_start(mut f: &File, page_id: u32) -> io::Result<u64> {
+    f.seek(SeekFrom::Start((page_id as u64) * PAGE_SIZE))
 }

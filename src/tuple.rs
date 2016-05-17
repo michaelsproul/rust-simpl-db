@@ -22,12 +22,12 @@ impl Tuple {
 
     /// Parse a string into a tuple, validating that it contains no question marks,
     /// and is the correct length.
-    pub fn parse(s: &str, num_attrs: u64) -> Option<Tuple> {
+    pub fn parse(s: &str, num_attrs: u32) -> Option<Tuple> {
         if s.contains('?') {
             return None;
         }
         let t = Tuple::parse_bytes(s.as_bytes());
-        if t.values.len() as u64 == num_attrs {
+        if t.values.len() == num_attrs as usize {
             Some(t)
         } else {
             None
