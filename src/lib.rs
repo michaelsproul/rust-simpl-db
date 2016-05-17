@@ -1,3 +1,7 @@
+// Profiling set-up to use the system allocator (Nightly compiler only).
+#![cfg_attr(feature = "nightly", feature(alloc_system))]
+#[cfg(feature = "nightly")] extern crate alloc_system;
+
 #[macro_use] extern crate log;
 extern crate env_logger;
 extern crate rand;
