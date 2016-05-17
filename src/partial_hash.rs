@@ -20,7 +20,7 @@ pub struct PageIdIter {
     current: u32,
     /// the nominal depth of the relation associated
     /// to this hashes iterator
-    n_depth: u32,
+    num_pages: u32,
     /// Initial hash value, ambiguous bits will be 0
     hash_init: u32,
     /// Used to check which bits are ambiguous
@@ -40,8 +40,8 @@ impl PartialHash {
         return self.mask == FULL_MASK;
     }
 
-    pub fn possible_ids(&self, nominal_depth: u32) -> PageIdIter {
-        return PageIdIter::new(self, nominal_depth);
+    pub fn possible_ids(&self, num_pages: u32) -> PageIdIter {
+        PageIdIter::new(self, num_pages)
     }
 
     pub fn from_query(query: &Query, choice: &ChoiceVec) -> PartialHash {
@@ -57,32 +57,23 @@ impl PartialHash {
         // generate multiattribute hash, from attr_hashs & choice vector,
         // along with the mask signifying which bits are known & unknown
         for (q_bit, &(a_index, a_bit)) in choice.data.iter().enumerate() {
-            if let Some(dereference) = attr_hashs.get(a_index as usize) {
-                if let &Some(a_hash) = dereference {
-                    // added a'th bit of attribute to hash
-                    query_hash |= ith_bit(a_bit, a_hash) << q_bit;
-                }
-                else {
-                    // remove the q'th bit from the query mask
-                    query_mask &= !(1 << q_bit);
-                }
-            }
-            else {
-                // a_index should NEVER be greater than the size of
-                // attr_hashs, but in the event it is something has
-                // gone wrong...
-                unreachable!("tried to get an invalid attribtue index of query");
+            if let Some(a_hash) = attr_hashs[a_index as usize] {
+                // added a'th bit of attribute to hash
+                query_hash |= ith_bit(a_bit, a_hash) << q_bit;
+            } else {
+                // remove the q'th bit from the query mask
+                query_mask &= !(1 << q_bit);
             }
         }
 
-        return PartialHash { hash: query_hash, mask: query_mask };
+        PartialHash { hash: query_hash, mask: query_mask }
     }
 }
 
 
 impl PageIdIter {
-    fn new(ma_hash: &PartialHash, nominal_depth: u32) -> Self {
-        let hsb = highest_set_bit(nominal_depth);
+    fn new(ma_hash: &PartialHash, num_pages: u32) -> Self {
+        let hsb = highest_set_bit(num_pages);
         // used to calculate the max number of iterations
         let mut iterations = 1;
         // iter_mask is a mask remove any trailing bits
@@ -100,7 +91,7 @@ impl PageIdIter {
         return PageIdIter {
             hash_init: ma_hash.hash & iter_mask & ma_hash.mask,
             current: 0,
-            n_depth: nominal_depth,
+            num_pages: num_pages,
             mask: ma_hash.mask & iter_mask,
             hsb: hsb,
             max: iterations,
@@ -136,7 +127,7 @@ impl Iterator for PageIdIter {
                 w_cursor += 1;
             }
 
-            if page_id <= self.n_depth {
+            if page_id < self.num_pages {
                 self.current += 1;
                 return Some(page_id);
             }
@@ -221,7 +212,7 @@ mod tests {
 
     #[test]
     fn iter_yields_correct_values_for_n7() {
-        let mut iter = PageIdIter::new(&PartialHash { hash: FULL_MASK, mask: 0b100 }, 7);
+        let mut iter = PageIdIter::new(&PartialHash { hash: FULL_MASK, mask: 0b100 }, 8);
         assert_eq!(iter.next(), Some(0b100));
         assert_eq!(iter.next(), Some(0b101));
         assert_eq!(iter.next(), Some(0b110));
@@ -231,7 +222,7 @@ mod tests {
 
     #[test]
     fn iter_yields_correct_values_for_n6() {
-        let mut iter = PageIdIter::new(&PartialHash { hash: FULL_MASK, mask: 0b100 }, 6);
+        let mut iter = PageIdIter::new(&PartialHash { hash: FULL_MASK, mask: 0b100 }, 7);
         assert_eq!(iter.next(), Some(0b100));
         assert_eq!(iter.next(), Some(0b101));
         assert_eq!(iter.next(), Some(0b110));

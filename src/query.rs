@@ -11,7 +11,7 @@ pub enum ParseError {
 }
 
 impl<'a> Query<'a> {
-    pub fn parse(input: &'a str, attr_count: u64) -> Result<Query<'a>, ParseError> {
+    pub fn parse(input: &'a str, attr_count: u32) -> Result<Query<'a>, ParseError> {
         let matches: Vec<Option<&'a str>> = input
             .split(',')
             .map(|x| if x == "?" { None } else { Some(x) })
@@ -86,4 +86,3 @@ mod tests {
         }
     }
 }
-

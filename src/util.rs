@@ -12,6 +12,23 @@ pub const HASH_SIZE: usize = 32;
 
 pub type BoxError = Box<Error + Send + Sync>;
 
+// Binary IO functions for fixed size integers.
+pub fn read_u8(mut f: &File) -> io::Result<u8> {
+    f.read_u8()
+}
+
+pub fn write_u8(mut f: &File, x: u8) -> io::Result<()> {
+    f.write_u8(x)
+}
+
+pub fn read_u32(mut f: &File) -> io::Result<u32> {
+    f.read_u32::<BigEndian>()
+}
+
+pub fn write_u32(mut f: &File, x: u32) -> io::Result<()> {
+    f.write_u32::<BigEndian>(x)
+}
+
 pub fn read_u64(mut f: &File) -> io::Result<u64> {
     f.read_u64::<BigEndian>()
 }
@@ -69,11 +86,11 @@ pub fn enable_logging() {
 
 // Round a user-supplied number of pages up to the nearest 2^n.
 // Return (n, 2^n).
-pub fn get_depth_and_num_pages(num_pages: u64) -> (u64, u64) {
+pub fn get_depth_and_num_pages(num_pages: u64) -> (u8, u64) {
     if num_pages == 0 {
         return (0, 1);
     }
-    let n = (num_pages as f64).log2().ceil() as u64;
+    let n = (num_pages as f64).log2().ceil() as u8;
     (n, 1 << n)
 }
 

@@ -6,7 +6,7 @@ use byteorder::{ReadBytesExt, WriteBytesExt};
 
 use util::*;
 
-pub type ChoiceEntry = (u64, u8);
+pub type ChoiceEntry = (u32, u8);
 
 /// Choice Vector struct.
 /// We index attributes from 0.
@@ -19,14 +19,13 @@ pub struct ChoiceVec {
 pub enum ParseError {
     NumberUnparsable,
     TooManyTuples,
-    MissingNumError(u64),
-    InvalidAttr(u64),
     InvalidEntry,
+    InvalidAttr(u32),
     InvalidBit(u8)
 }
 
 impl ChoiceVec {
-    pub fn new(given_bits: Vec<ChoiceEntry>, attrs: u64) -> ChoiceVec {
+    pub fn new(given_bits: Vec<ChoiceEntry>, num_attrs: u32) -> ChoiceVec {
         assert!(given_bits.len() <= HASH_SIZE);
         let mut cv = ChoiceVec {
             data: [(0, 0); HASH_SIZE]
@@ -35,18 +34,18 @@ impl ChoiceVec {
         cv.data[0 .. given_bits.len()].clone_from_slice(&given_bits[..]);
 
         // Generate the rest.
-        cv.generate_from(attrs, given_bits.len());
+        cv.generate_from(num_attrs, given_bits.len());
 
         cv
     }
 
     /// Generate all entries of the choice vector from index `start` onwards.
-    fn generate_from(&mut self, num_attrs: u64, start: usize) {
+    fn generate_from(&mut self, num_attrs: u32, start: usize) {
         let mut rng = rand::thread_rng();
 
         for i in start..HASH_SIZE {
             loop {
-                let (attr, bit) = (rng.gen::<u64>() % num_attrs, rng.gen::<u8>() % HASH_SIZE as u8);
+                let (attr, bit) = (rng.gen::<u32>() % num_attrs, rng.gen::<u8>() % HASH_SIZE as u8);
                 if !(&self.data[..i]).contains(&(attr, bit)) {
                     self.data[i] = (attr, bit);
                     trace!("Generated entry: ({}, {})", attr, bit);
@@ -56,7 +55,7 @@ impl ChoiceVec {
         }
     }
 
-    pub fn parse(input: &str, attr_count: u64) -> Result<ChoiceVec, ParseError> {
+    pub fn parse(input: &str, num_attrs: u32) -> Result<ChoiceVec, ParseError> {
         let mut given_bits = vec![];
 
         for (i, entry) in input.split(':').enumerate() {
@@ -65,19 +64,19 @@ impl ChoiceVec {
             if split.len() != 2 {
                 return Err(ParseError::InvalidEntry);
             }
-            let l: u64 = try!(split[0].parse().or_else(|_| Err(ParseError::NumberUnparsable)));
+            let l: u32 = try!(split[0].parse().or_else(|_| Err(ParseError::NumberUnparsable)));
             let r: u8 = try!(split[1].parse().or_else(|_| Err(ParseError::NumberUnparsable)));
-            if l >= attr_count { return Err(ParseError::InvalidAttr(l)) }
+            if l >= num_attrs { return Err(ParseError::InvalidAttr(l)) }
             if r as usize >= HASH_SIZE { return Err(ParseError::InvalidBit(r)) }
             given_bits.push((l, r));
         }
 
-        Ok(ChoiceVec::new(given_bits, attr_count))
+        Ok(ChoiceVec::new(given_bits, num_attrs))
     }
 
     pub fn write(&self, mut f: &File) -> io::Result<()> {
         for &(attr, val) in self.data.iter() {
-            try!(write_u64(f, attr));
+            try!(write_u32(f, attr));
             try!(f.write_u8(val));
         }
         Ok(())
@@ -86,7 +85,7 @@ impl ChoiceVec {
     pub fn read(mut f: &File) -> io::Result<ChoiceVec> {
         let mut data = [(0, 0); HASH_SIZE];
         for i in 0..HASH_SIZE {
-            let attr = try!(read_u64(f));
+            let attr = try!(read_u32(f));
             let val = try!(f.read_u8());
             data[i] = (attr, val);
         }
