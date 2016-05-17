@@ -4,5 +4,6 @@ target
 *.data
 *.o
 *.swp
+*.txt
 bindata
 reference/gendata

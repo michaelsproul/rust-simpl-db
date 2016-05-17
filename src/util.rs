@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io;
+use std::io::{self, Read, Write};
 use std::env;
 use std::process::exit;
 use std::error::Error;
@@ -21,11 +21,11 @@ pub fn write_u8(mut f: &File, x: u8) -> io::Result<()> {
     f.write_u8(x)
 }
 
-pub fn read_u32(mut f: &File) -> io::Result<u32> {
+pub fn read_u32<R: Read>(mut f: R) -> io::Result<u32> {
     f.read_u32::<BigEndian>()
 }
 
-pub fn write_u32(mut f: &File, x: u32) -> io::Result<()> {
+pub fn write_u32<W: Write>(mut f: W, x: u32) -> io::Result<()> {
     f.write_u32::<BigEndian>(x)
 }
 

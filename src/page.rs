@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{self, Read, Write, Seek, SeekFrom};
+use std::io::{self, Read, Write, Seek, SeekFrom, Cursor};
 use std::io::ErrorKind::InvalidInput;
 use std::collections::LinkedList;
 use util::*;
@@ -65,9 +65,17 @@ impl<'b> Page<'b> {
 
     pub fn read<'a>(mut f: &'a File, page_id: u32) -> io::Result<Page<'a>> {
         try!(seek_to_start(f, page_id));
-        let free = try!(read_u32(f));
-        let ovflow = try!(read_u32(f));
-        let num_tuples = try!(read_u32(f));
+
+        // Load the whole page.
+        let mut buffer = Box::new([0; PAGE_SIZE as usize]);
+        try!(f.read_exact(&mut buffer[..]));
+
+        // Parse the page's data.
+        let mut cursor = Cursor::new(&buffer.as_ref()[..]);
+
+        let free = try!(read_u32(&mut cursor));
+        let ovflow = try!(read_u32(&mut cursor));
+        let num_tuples = try!(read_u32(&mut cursor));
 
         let mut page = Page {
             id: page_id,
@@ -80,7 +88,7 @@ impl<'b> Page<'b> {
         };
 
         // XXX: we might need to call read more than once here.
-        let bytes_read = try!(f.read(page.data.as_mut()));
+        let bytes_read = try!(cursor.read(page.data.as_mut()));
         assert_eq!(bytes_read, PAGE_DATA_SIZE);
 
         Ok(page)
@@ -88,10 +96,13 @@ impl<'b> Page<'b> {
 
     pub fn write(&mut self) -> io::Result<()> {
         try!(seek_to_start(&self.file, self.id));
-        try!(write_u32(self.file, self.free));
-        try!(write_u32(self.file, self.ovflow));
-        try!(write_u32(self.file, self.num_tuples));
-        try!(self.file.write_all(self.data.as_ref()));
+        // Write all the data into a buffer.
+        let mut buf = Vec::<u8>::with_capacity(PAGE_SIZE as usize);
+        try!(write_u32(&mut buf, self.free));
+        try!(write_u32(&mut buf, self.ovflow));
+        try!(write_u32(&mut buf, self.num_tuples));
+        try!(buf.write_all(self.data.as_ref()));
+        try!(self.file.write_all(buf.as_ref()));
         try!(self.file.flush());
         self.dirty = false;
         Ok(())
