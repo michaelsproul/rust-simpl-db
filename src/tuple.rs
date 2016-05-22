@@ -2,7 +2,7 @@ use choice_vec::ChoiceVec;
 use util::*;
 use std::str;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Tuple {
     pub values: Vec<String>
 }
