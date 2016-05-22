@@ -16,18 +16,18 @@ impl<'a> Query<'a> {
         Query { matches: vec![None; num_attrs as usize] }
     }
 
-    pub fn parse(input: &'a str, attr_count: u32) -> Result<Query<'a>, ParseError> {
+    pub fn parse(input: &'a str, num_attrs: u32) -> Result<Query<'a>, ParseError> {
         let matches: Vec<Option<&'a str>> = input
             .split(',')
             .map(|x| if x == "?" { None } else { Some(x) })
             .collect();
 
         let match_len = matches.len();
-        if match_len == attr_count as usize {
+        if match_len == num_attrs as usize {
             return Ok(Query { matches: matches });
         }
         else {
-            return Err(ParseError::AttributeMismatch(attr_count as usize, match_len));
+            return Err(ParseError::AttributeMismatch(num_attrs as usize, match_len));
         }
     }
 

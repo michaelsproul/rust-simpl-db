@@ -119,8 +119,6 @@ impl<'b> Page<'b> {
 
     /// Retrieve all the tuples from this page that match the given query.
     pub fn get_tuples_matching<'a>(&self, query: &'a Query<'a>) -> LinkedList<Tuple> {
-        // FIXME: De-dupe. Writing iterator types is a collosal pain though.
-        // Perhaps get_tuple_list should be implemented in terms of a null query...
         self.data
             .split(|&b| b == 0)
             .filter(|slice| slice.len() > 0)
@@ -141,7 +139,6 @@ impl<'b> Page<'b> {
 
     /// Add a tuple if one will fit.
     /// Return true if the tuple was added.
-    // FIXME: numeric downcasts, should probably just use usize everywhere.
     pub fn add_tuple(&mut self, tuple: &[u8]) -> bool {
         if self.free_space() < tuple.len() {
             return false;
