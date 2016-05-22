@@ -233,4 +233,11 @@ mod tests {
         assert_eq!(iter.next(), Some(0b110));
         assert_eq!(iter.next(), None);
     }
+
+    #[test]
+    fn iter_single_page() {
+        let mut iter = PageIdIter::new(&PartialHash { hash: 1, mask: 1}, 1);
+        assert_eq!(iter.next(), Some(0));
+        assert_eq!(iter.next(), None);
+    }
 }
