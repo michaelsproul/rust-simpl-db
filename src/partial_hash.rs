@@ -28,7 +28,7 @@ pub struct PageIdIter {
     /// The number of yielded page_ids
     current: u32,
     /// The maximum number of bits to consider, equal to d + 1, where d is the relation depth.
-    usable_bits: u8,
+    highest_usable_bit: u8,
     /// The number of pages
     num_pages: u32,
     /// Initial hash value, ambiguous bits will be 0
@@ -80,7 +80,7 @@ impl PartialHash {
 
 impl PageIdIter {
     fn new(ma_hash: &PartialHash, num_pages: u32) -> Self {
-        let usable_bits = highest_set_bit(num_pages) - 1;
+        let highest_usable_bit = highest_set_bit(num_pages) - 1;
 
         // used to calculate the max number of iterations
         let mut iterations = 1;
@@ -89,7 +89,7 @@ impl PageIdIter {
         // from the iterator's mask & init_hash
         let mut iter_mask = 0;
 
-        for i in 0..usable_bits {
+        for i in 0..highest_usable_bit {
             let position = 1 << i;
             iter_mask |= position;
             if ma_hash.mask & position == 0 {
@@ -98,17 +98,12 @@ impl PageIdIter {
         }
 
         // HUB stands for highest usable bit
-        let mask_hub = ith_bit(usable_bits, ma_hash.mask);
-        let hash_hub = ith_bit(usable_bits, ma_hash.hash);
-
-        // bits from 0 to (1 << (usable_bits - 1u8)) are 1
-        let full_num = (1u32 << usable_bits) - 1;
+        let mask_hub = ith_bit(highest_usable_bit, ma_hash.mask);
+        let hash_hub = ith_bit(highest_usable_bit, ma_hash.hash);
 
         PageIdIter {
             // this is the starting branch of the iterator
             state: match (mask_hub, hash_hub) {
-                // single pages have a werid state
-                _ if num_pages == 1 => HubState::HubOff,
                 (1, 0) => HubState::HubOff,
                 (1, 1) => HubState::HubSet,
                 (0, _) => HubState::HubUnknownA,
@@ -119,13 +114,13 @@ impl PageIdIter {
             // the value of the nth page is actually (n - 1)
             num_pages: num_pages - 1,
             mask: ma_hash.mask & iter_mask,
-            usable_bits: usable_bits,
+            highest_usable_bit: highest_usable_bit,
             max: iterations,
         }
     }
 
     fn last_bit(&self) -> u32 {
-        (1 << (self.usable_bits))
+        (1 << (self.highest_usable_bit))
     }
 
     // calculates hash without the highest usable
@@ -142,7 +137,7 @@ impl PageIdIter {
 
         // replace the ambiguous bits with the bits
         // of current iteration count
-        while w_cursor < self.usable_bits {
+        while w_cursor < self.highest_usable_bit {
             // check if bit is ambiguous or not, if so insert into page_id
             // @ the value of w_cursor, from the value of current @ the
             // value of r_cursor & advance the r_cursor
