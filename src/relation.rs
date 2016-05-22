@@ -146,7 +146,7 @@ impl Relation {
         SelectIter {
             query: query,
             // FIXME: Use num_pages as a u64 once partial_hash is revamped.
-            page_id_iter: partial_hash.possible_ids(self.num_pages as u32),
+            page_id_iter: partial_hash.matching_page_ids(self.depth, self.num_pages as u32),
             bucket_iter: None,
             ovflow_file: &self.ovflow_file,
             data_file: &self.data_file,

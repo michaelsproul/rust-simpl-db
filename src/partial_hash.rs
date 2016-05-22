@@ -18,8 +18,9 @@ pub struct PartialHash {
 pub struct PageIdIter {
     /// The number of yielded page_ids
     current: u32,
-    /// the nominal depth of the relation associated
-    /// to this hashes iterator
+    /// The maximum number of bits to consider, equal to d + 1, where d is the relation depth.
+    usable_bits: u8,
+    /// The number of pages
     num_pages: u32,
     /// Initial hash value, ambiguous bits will be 0
     hash_init: u32,
@@ -27,8 +28,6 @@ pub struct PageIdIter {
     mask: u32,
     /// The max number of page_ids to yield
     max: u32,
-    /// The depth of thet bits used in a page
-    hsb: u8,
 }
 
 impl PartialHash {
@@ -40,8 +39,8 @@ impl PartialHash {
         return self.mask == FULL_MASK;
     }
 
-    pub fn possible_ids(&self, num_pages: u32) -> PageIdIter {
-        PageIdIter::new(self, num_pages)
+    pub fn matching_page_ids(&self, depth: u8, num_pages: u32) -> PageIdIter {
+        PageIdIter::new(self, depth, num_pages)
     }
 
     pub fn from_query(query: &Query, choice: &ChoiceVec) -> PartialHash {
@@ -70,17 +69,17 @@ impl PartialHash {
     }
 }
 
-
 impl PageIdIter {
-    fn new(ma_hash: &PartialHash, num_pages: u32) -> Self {
-        let hsb = highest_set_bit(num_pages);
+    fn new(ma_hash: &PartialHash, depth: u8, num_pages: u32) -> Self {
+        //let usable_bits = depth + 1;
+        let usable_bits = highest_set_bit(num_pages);
         // used to calculate the max number of iterations
         let mut iterations = 1;
-        // iter_mask is a mask remove any trailing bits
-        // from the iterators mask & init_hash
+        // iter_mask is a mask to remove any trailing bits
+        // from the iterator's mask & init_hash
         let mut iter_mask = 0;
 
-        for i in 0..hsb {
+        for i in 0..usable_bits {
             let position = 1 << i;
             iter_mask |= position;
             if ma_hash.mask & position == 0 {
@@ -88,17 +87,16 @@ impl PageIdIter {
             }
         }
 
-        return PageIdIter {
+        PageIdIter {
             hash_init: ma_hash.hash & iter_mask & ma_hash.mask,
             current: 0,
             num_pages: num_pages,
             mask: ma_hash.mask & iter_mask,
-            hsb: hsb,
+            usable_bits: usable_bits,
             max: iterations,
-        };
+        }
     }
 }
-
 
 impl Iterator for PageIdIter {
     type Item = u32;
@@ -112,34 +110,31 @@ impl Iterator for PageIdIter {
             self.current = self.max;
             return Some(0);
         }
-        else {
-            let mut page_id = self.hash_init;
-            // bit to read from `current`
-            let mut r_cursor = 0u8;
-            // bit to write to in `page_id`
-            let mut w_cursor = 0u8;
+        let mut page_id = self.hash_init;
+        // bit to read from `current`
+        let mut r_cursor = 0u8;
+        // bit to write to in `page_id`
+        let mut w_cursor = 0u8;
 
-            // replace the ambiguous bits with the bits
-            // of current iteration count
-            while w_cursor < self.hsb {
-                // check if bit is ambiguous or not, if so insert into page_id
-                // @ the value of w_cursor, from the value of current @ the
-                // value of r_cursor & advance the r_cursor
-                if ith_bit(w_cursor, self.mask) == 0 {
-                    page_id |= ith_bit(r_cursor, self.current) << w_cursor;
-                    r_cursor += 1;
-                }
-                w_cursor += 1;
+        // replace the ambiguous bits with the bits
+        // of current iteration count
+        while w_cursor < self.usable_bits {
+            // check if bit is ambiguous or not, if so insert into page_id
+            // @ the value of w_cursor, from the value of current @ the
+            // value of r_cursor & advance the r_cursor
+            if ith_bit(w_cursor, self.mask) == 0 {
+                page_id |= ith_bit(r_cursor, self.current) << w_cursor;
+                r_cursor += 1;
             }
+            w_cursor += 1;
+        }
 
-            if page_id < self.num_pages {
-                self.current += 1;
-                return Some(page_id);
-            }
-            else {
-                self.current = self.max;
-                return None
-            }
+        if page_id < self.num_pages {
+            self.current += 1;
+            Some(page_id)
+        } else {
+            self.current = self.max;
+            None
         }
     }
 }
@@ -210,14 +205,14 @@ mod tests {
 
     #[test]
     fn iter_with_no_ambiguities() {
-        let mut iter = PageIdIter::new(&PartialHash { hash: 0, mask: FULL_MASK }, 3);
+        let mut iter = PageIdIter::new(&PartialHash { hash: 0, mask: FULL_MASK }, 1, 3);
         assert!(iter.next().is_some());
         assert!(iter.next().is_none());
     }
 
     #[test]
     fn iter_yields_correct_values_for_n7() {
-        let mut iter = PageIdIter::new(&PartialHash { hash: FULL_MASK, mask: 0b100 }, 8);
+        let mut iter = PageIdIter::new(&PartialHash { hash: FULL_MASK, mask: 0b100 }, 3, 8);
         assert_eq!(iter.next(), Some(0b100));
         assert_eq!(iter.next(), Some(0b101));
         assert_eq!(iter.next(), Some(0b110));
@@ -227,7 +222,7 @@ mod tests {
 
     #[test]
     fn iter_yields_correct_values_for_n6() {
-        let mut iter = PageIdIter::new(&PartialHash { hash: FULL_MASK, mask: 0b100 }, 7);
+        let mut iter = PageIdIter::new(&PartialHash { hash: FULL_MASK, mask: 0b100 }, 3, 7);
         assert_eq!(iter.next(), Some(0b100));
         assert_eq!(iter.next(), Some(0b101));
         assert_eq!(iter.next(), Some(0b110));
@@ -236,8 +231,16 @@ mod tests {
 
     #[test]
     fn iter_single_page() {
-        let mut iter = PageIdIter::new(&PartialHash { hash: 1, mask: 1}, 1);
+        let mut iter = PageIdIter::new(&PartialHash { hash: 1, mask: 1}, 1, 1);
         assert_eq!(iter.next(), Some(0));
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn iter_sp_zero() {
+        let mut iter = PageIdIter::new(&PartialHash { hash : 0b10, mask: 0b10}, 1, 2);
+        assert_eq!(iter.next(), Some(0));
+        assert_eq!(iter.next(), Some(1));
         assert_eq!(iter.next(), None);
     }
 }
