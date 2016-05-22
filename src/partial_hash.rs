@@ -287,7 +287,7 @@ mod tests {
         // 2 -> 001
         // 3 -> 010
         // 4 -> 011
-        let mut iter = PageIdIter::new(&PartialHash { hash: FULL_MASK, mask: 0b100 }, 5);
+        let iter = PageIdIter::new(&PartialHash { hash: FULL_MASK, mask: 0b100 }, 5);
         let expected: HashSet<u32> = vec![0b100, 0b1, 0b10, 0b11].into_iter().collect();
         let results : HashSet<u32> = iter.collect();
         assert_eq!(expected, results);
@@ -299,7 +299,7 @@ mod tests {
         // 2 -> 101
         // 3 -> 110
         // 4 -> 111
-        let mut iter = PageIdIter::new(&PartialHash { hash: FULL_MASK, mask: 0b100 }, 8);
+        let iter = PageIdIter::new(&PartialHash { hash: FULL_MASK, mask: 0b100 }, 8);
         let expected: HashSet<u32> = vec![0b100, 0b101, 0b110, 0b111].into_iter().collect();
         let results : HashSet<u32> = iter.collect();
         assert_eq!(expected, results);
@@ -311,7 +311,7 @@ mod tests {
         // 2 -> 001
         // 3 -> 111
         // 4 -> 011
-        let mut iter = PageIdIter::new(&PartialHash { hash: FULL_MASK, mask: 0b001 }, 8);
+        let iter = PageIdIter::new(&PartialHash { hash: FULL_MASK, mask: 0b001 }, 8);
         let expected: HashSet<u32> = vec![0b01, 0b11, 0b101, 0b111].into_iter().collect();
         let results : HashSet<u32> = iter.collect();
         assert_eq!(expected, results);
@@ -328,7 +328,7 @@ mod tests {
     fn iter_sp_zero() {
         // 1 -> 00
         // 2 -> 01
-        let mut iter = PageIdIter::new(&PartialHash { hash : 0b10, mask: 0b10}, 2);
+        let iter = PageIdIter::new(&PartialHash { hash : 0b10, mask: 0b10}, 2);
         let expected: HashSet<u32> = vec![0, 1].into_iter().collect();
         let results : HashSet<u32> = iter.collect();
         assert_eq!(expected, results);
@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     fn iter_3_pages() {
-        let mut iter = PageIdIter::new(&PartialHash { hash : 0b10, mask: 0b10}, 3);
+        let iter = PageIdIter::new(&PartialHash { hash : 0b10, mask: 0b10}, 3);
         let expected: HashSet<u32> = vec![1, 2].into_iter().collect();
         let results : HashSet<u32> = iter.collect();
         assert_eq!(expected, results);
