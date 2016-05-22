@@ -11,6 +11,11 @@ pub enum ParseError {
 }
 
 impl<'a> Query<'a> {
+    /// Construct a Query that matches anything for a given number of attributes.
+    pub fn wildcard(num_attrs: u32) -> Query<'a> {
+        Query { matches: vec![None; num_attrs as usize] }
+    }
+
     pub fn parse(input: &'a str, attr_count: u32) -> Result<Query<'a>, ParseError> {
         let matches: Vec<Option<&'a str>> = input
             .split(',')

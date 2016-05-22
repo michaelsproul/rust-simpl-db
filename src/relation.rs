@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::fs::{File, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, Seek, SeekFrom};
 use std::collections::LinkedList;
 use std::error::Error;
@@ -20,6 +20,7 @@ pub enum OpenMode {
 }
 
 pub struct Relation {
+    pub name: String,
     pub num_attrs: u32,
     pub depth: u8,
     pub split_pointer: u32,
@@ -80,6 +81,7 @@ impl Relation {
 
         // Create new relation struct and associated files.
         let r = Relation {
+            name: name.to_string(),
             num_attrs: num_attrs,
             depth: depth,
             split_pointer: 0,
@@ -115,6 +117,7 @@ impl Relation {
         let choice_vec = try!(ChoiceVec::read(&info_file));
 
         Ok(Relation {
+            name: name.to_string(),
             num_attrs: num_attrs,
             depth: depth,
             split_pointer: split_pointer,
@@ -351,6 +354,29 @@ impl Relation {
         try!(write_u64(f, self.num_pages));
         try!(write_u64(f, self.num_tuples));
         try!(self.choice_vec.write(f));
+        Ok(())
+    }
+
+    /// Check the integrity of the relation and panic if anything is wrong.
+    pub fn is_sane(&self) {
+        // Check data file length.
+        let next_page_id = get_next_page_id(&self.data_file).unwrap();
+        assert_eq!(next_page_id as u64, self.num_pages);
+
+        // Check depth and split pointer.
+        assert!(self.depth as usize <= HASH_SIZE);
+        assert!((self.split_pointer as u64) < self.num_pages);
+        // num_pages = 2^d + split_pointer.
+        assert_eq!(self.num_pages, (1 << self.depth as u64) + (self.split_pointer as u64));
+
+        // Check the number of tuples.
+        assert_eq!(self.select(&Query::wildcard(self.num_attrs)).count(), self.num_tuples as usize);
+    }
+
+    pub fn delete(&mut self) -> io::Result<()> {
+        try!(fs::remove_file(info_file_name(&self.name)));
+        try!(fs::remove_file(data_file_name(&self.name)));
+        try!(fs::remove_file(ovflow_file_name(&self.name)));
         Ok(())
     }
 }
