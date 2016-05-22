@@ -141,6 +141,7 @@ impl Relation {
 
     /// Select tuples matching a query.
     pub fn select<'a>(&'a self, query: &'a Query<'a>) -> SelectIter<'a> {
+        debug!("Relation::select, query is: {:?}", query);
         let partial_hash = PartialHash::from_query(query, &self.choice_vec);
         SelectIter {
             query: query,

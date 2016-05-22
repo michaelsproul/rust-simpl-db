@@ -104,8 +104,13 @@ impl Iterator for PageIdIter {
     type Item = u32;
 
     fn next(&mut self) -> Option<u32> {
+        trace!("PageIdIter::next, {:?}", self);
         if self.max == self.current {
             return None;
+        }
+        if self.num_pages == 1 {
+            self.current = self.max;
+            return Some(0);
         }
         else {
             let mut page_id = self.hash_init;

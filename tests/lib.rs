@@ -47,6 +47,7 @@ fn insert_largest_tuple() {
 fn select_empty() {
     let r = TestRelation::new(10);
     assert_eq!(r.0.select(&Query::wildcard(r.0.num_attrs)).count(), 0);
+    r.close();
 }
 
 #[test]
@@ -77,4 +78,5 @@ fn select_single() {
         let query = Query::parse(q, num_attrs).unwrap();
         assert_eq!(r.0.select(&query).count(), 0);
     }
+    r.close();
 }
