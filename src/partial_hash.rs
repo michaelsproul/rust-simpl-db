@@ -1,10 +1,14 @@
-use util::{hash as util_hash, bit as ith_bit, highest_set_bit };
+use std::mem;
+
+use util::{hash as util_hash, bit as ith_bit, lower_bits};
 use query::Query;
 use choice_vec::ChoiceVec;
 
+use self::IterStage::*;
+
 pub const FULL_MASK: u32 = 0b11111111_11111111_11111111_11111111;
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
 pub struct PartialHash {
     /// The multiattribute hash value, if a bit
     /// is unknown it'll be zero, but should be
@@ -16,19 +20,22 @@ pub struct PartialHash {
 
 #[derive(Debug)]
 pub struct PageIdIter {
-    /// The number of yielded page_ids
-    current: u32,
-    /// the nominal depth of the relation associated
-    /// to this hashes iterator
-    num_pages: u32,
-    /// Initial hash value, ambiguous bits will be 0
-    hash_init: u32,
-    /// Used to check which bits are ambiguous
-    mask: u32,
-    /// The max number of page_ids to yield
-    max: u32,
-    /// The depth of thet bits used in a page
-    hsb: u8,
+    inner_iter: BinaryIterator,
+    stage: IterStage,
+    depth: u8,
+    sp: u32,
+    num_pages: u64,
+    cached: Option<u32>,
+    hash: PartialHash
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum IterStage {
+    Stage1,
+    Stage2,
+    Stage3,
+    Stage4,
+    Finished
 }
 
 impl PartialHash {
@@ -40,8 +47,8 @@ impl PartialHash {
         return self.mask == FULL_MASK;
     }
 
-    pub fn possible_ids(&self, num_pages: u32) -> PageIdIter {
-        PageIdIter::new(self, num_pages)
+    pub fn matching_page_ids(&self, depth: u8, split_pointer: u32, num_pages: u64) -> PageIdIter {
+        PageIdIter::new(self, depth, split_pointer, num_pages)
     }
 
     pub fn from_query(query: &Query, choice: &ChoiceVec) -> PartialHash {
@@ -70,75 +77,152 @@ impl PartialHash {
     }
 }
 
-
 impl PageIdIter {
-    fn new(ma_hash: &PartialHash, num_pages: u32) -> Self {
-        let hsb = highest_set_bit(num_pages);
-        // used to calculate the max number of iterations
-        let mut iterations = 1;
-        // iter_mask is a mask remove any trailing bits
-        // from the iterators mask & init_hash
-        let mut iter_mask = 0;
-
-        for i in 0..hsb {
-            let position = 1 << i;
-            iter_mask |= position;
-            if ma_hash.mask & position == 0 {
-                iterations <<= 1;
-            }
-        }
-
-        return PageIdIter {
-            hash_init: ma_hash.hash & iter_mask & ma_hash.mask,
-            current: 0,
-            num_pages: num_pages,
-            mask: ma_hash.mask & iter_mask,
-            hsb: hsb,
-            max: iterations,
+    fn new(ma_hash: &PartialHash, depth: u8, sp: u32, num_pages: u64) -> Self {
+        let stage1_iter = BinaryIterator {
+            value: lower_bits(depth, ma_hash.hash),
+            mask: lower_bits(depth, ma_hash.mask),
+            num_bits: depth,
+            assignment: 0,
+            finished: false
         };
+        PageIdIter {
+            inner_iter: stage1_iter,
+            stage: Stage1,
+            depth: depth,
+            sp: sp,
+            num_pages: num_pages,
+            hash: ma_hash.clone(),
+            cached: None
+        }
     }
 }
 
+fn assign_unknown_bits(value: u32, mask: u32, num_bits: u8, assignment: u32) -> u32 {
+    let mut result = value;
+    let mut j = 0;
+    for i in 0..num_bits {
+        // If the ith bit is in need of assignment, set it to the jth bit of the assignment.
+        if ith_bit(i, mask) == 0 {
+            result |= ith_bit(j, assignment) << i;
+            j += 1;
+        }
+    }
+    result
+}
+
+fn num_unknown_bits(num_bits: u8, mask: u32) -> u8 {
+    num_bits - mask.count_ones() as u8
+}
+
+#[derive(Debug)]
+struct BinaryIterator {
+    value: u32,
+    mask: u32,
+    num_bits: u8,
+    assignment: u32,
+    finished: bool,
+}
+
+impl Iterator for BinaryIterator {
+    type Item = u32;
+
+    fn next(&mut self) -> Option<u32> {
+        if self.finished {
+            return None;
+        }
+        let res = assign_unknown_bits(self.value, self.mask, self.num_bits, self.assignment);
+        // If all bit assignments have been exhausted, stop.
+        // TODO: Fix overflow here.
+        let nub = num_unknown_bits(self.num_bits, self.mask);
+        println!("nub: {}", nub);
+        let max_assignment = ((1 << nub as u64) - 1) as u32;
+        println!("{}", max_assignment);
+        if self.assignment == max_assignment {
+            self.finished = true;
+        } else {
+            self.assignment += 1;
+        }
+        Some(res)
+    }
+}
 
 impl Iterator for PageIdIter {
     type Item = u32;
 
     fn next(&mut self) -> Option<u32> {
-        trace!("PageIdIter::next, {:?}", self);
-        if self.max == self.current {
-            return None;
-        }
-        if self.num_pages == 1 {
-            self.current = self.max;
+        println!("{:?}", self);
+        if self.num_pages == 1 && self.stage != Finished {
+            self.stage = Finished;
             return Some(0);
         }
-        else {
-            let mut page_id = self.hash_init;
-            // bit to read from `current`
-            let mut r_cursor = 0u8;
-            // bit to write to in `page_id`
-            let mut w_cursor = 0u8;
 
-            // replace the ambiguous bits with the bits
-            // of current iteration count
-            while w_cursor < self.hsb {
-                // check if bit is ambiguous or not, if so insert into page_id
-                // @ the value of w_cursor, from the value of current @ the
-                // value of r_cursor & advance the r_cursor
-                if ith_bit(w_cursor, self.mask) == 0 {
-                    page_id |= ith_bit(r_cursor, self.current) << w_cursor;
-                    r_cursor += 1;
+        if let Some(cached) = mem::replace(&mut self.cached, None) {
+            return Some(cached);
+        }
+
+        match self.stage {
+            Stage1 => {
+                // Ignore the first section if the (d + 1)th bit of the hash is known to be 1.
+                if ith_bit(self.depth, self.hash.hash & self.hash.mask) == 1 {
+                    while let Some(v) = self.inner_iter.next() {
+                        if v >= self.sp {
+                            trace!("caching: {}", v);
+                            self.cached = Some(v);
+                            break;
+                        }
+                        trace!("ignored: {}", v);
+                    }
                 }
-                w_cursor += 1;
+                self.stage = Stage2;
+                self.next()
             }
-
-            if page_id < self.num_pages {
-                self.current += 1;
-                return Some(page_id);
+            Stage2 => {
+                match self.inner_iter.next() {
+                    Some(v) => {
+                        Some(v)
+                    }
+                    None => {
+                        self.stage = Stage3;
+                        self.next()
+                    }
+                }
             }
-            else {
-                self.current = self.max;
-                return None
+            Stage3 => {
+                if  ith_bit(self.depth, self.hash.hash & self.hash.mask) == 1 ||
+                    ith_bit(self.depth, self.hash.mask) == 0
+                {
+                    let mut hash_with_1 = lower_bits(self.depth + 1, self.hash.hash & self.hash.mask);
+                    hash_with_1 |= 1 << self.depth;
+                    let mut mask_with_1 = lower_bits(self.depth + 1, self.hash.mask);
+                    mask_with_1 |= 1 << self.depth;
+                    self.inner_iter = BinaryIterator {
+                        value: hash_with_1,
+                        mask: mask_with_1,
+                        num_bits: self.depth + 1,
+                        assignment: 0,
+                        finished: false,
+                    };
+                    self.stage = Stage4;
+                    self.next()
+                } else {
+                    self.stage = Finished;
+                    None
+                }
+            }
+            Stage4 => {
+                match self.inner_iter.next() {
+                    Some(v) if (v as u64) < self.num_pages => {
+                        Some(v)
+                    }
+                    _ => {
+                        self.stage = Finished;
+                        None
+                    }
+                }
+            }
+            Finished => {
+                None
             }
         }
     }
@@ -208,16 +292,18 @@ mod tests {
 
     // hash iter
 
+    /*
     #[test]
     fn iter_with_no_ambiguities() {
-        let mut iter = PageIdIter::new(&PartialHash { hash: 0, mask: FULL_MASK }, 3);
+        let mut iter = PageIdIter::new(&PartialHash { hash: 0, mask: FULL_MASK }, 1, 1, 3);
         assert!(iter.next().is_some());
         assert!(iter.next().is_none());
     }
+    */
 
     #[test]
-    fn iter_yields_correct_values_for_n7() {
-        let mut iter = PageIdIter::new(&PartialHash { hash: FULL_MASK, mask: 0b100 }, 8);
+    fn iter_yields_correct_values_for_n8() {
+        let mut iter = PageIdIter::new(&PartialHash { hash: 0b100, mask: 0b100 }, 3, 0, 8);
         assert_eq!(iter.next(), Some(0b100));
         assert_eq!(iter.next(), Some(0b101));
         assert_eq!(iter.next(), Some(0b110));
@@ -227,7 +313,7 @@ mod tests {
 
     #[test]
     fn iter_yields_correct_values_for_n6() {
-        let mut iter = PageIdIter::new(&PartialHash { hash: FULL_MASK, mask: 0b100 }, 7);
+        let mut iter = PageIdIter::new(&PartialHash { hash: FULL_MASK, mask: 0b100 }, 2, 4, 7);
         assert_eq!(iter.next(), Some(0b100));
         assert_eq!(iter.next(), Some(0b101));
         assert_eq!(iter.next(), Some(0b110));
@@ -236,8 +322,24 @@ mod tests {
 
     #[test]
     fn iter_single_page() {
-        let mut iter = PageIdIter::new(&PartialHash { hash: 1, mask: 1}, 1);
+        let mut iter = PageIdIter::new(&PartialHash { hash: 1, mask: 1}, 1, 0, 1);
         assert_eq!(iter.next(), Some(0));
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn iter_sp_zero() {
+        let mut iter = PageIdIter::new(&PartialHash { hash : 0b10, mask: 0b10 }, 1, 0, 2);
+        assert_eq!(iter.next(), Some(0));
+        assert_eq!(iter.next(), Some(1));
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn iter_lel() {
+        let mut iter = PageIdIter::new(&PartialHash { hash : 0b10, mask: 0b10 }, 1, 1, 3);
+        assert_eq!(iter.next(), Some(0b01));
+        assert_eq!(iter.next(), Some(0b10));
         assert_eq!(iter.next(), None);
     }
 }
