@@ -33,6 +33,7 @@ impl<'a> Query<'a> {
 
     pub fn matches_tuple(&self, tuple: &Tuple) -> bool {
         debug_assert!(self.matches.len() == tuple.values.len());
+        trace!("Query::matches_tuple with: {:?}, {:?}", self, tuple);
         for i in 0..tuple.values.len() {
             if let Some(query_attr) = self.matches[i] {
                 if query_attr != &tuple.values[i] {
