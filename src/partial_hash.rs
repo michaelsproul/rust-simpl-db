@@ -15,7 +15,16 @@ pub struct PartialHash {
 }
 
 #[derive(Debug)]
+pub enum HubState {
+    HubOff,
+    HubSet,
+    HubUnknownA,
+    HubUnknownB(u32),
+}
+
+#[derive(Debug)]
 pub struct PageIdIter {
+    state: HubState,
     /// The number of yielded page_ids
     current: u32,
     /// The maximum number of bits to consider, equal to d + 1, where d is the relation depth.
@@ -39,8 +48,8 @@ impl PartialHash {
         return self.mask == FULL_MASK;
     }
 
-    pub fn matching_page_ids(&self, depth: u8, num_pages: u32) -> PageIdIter {
-        PageIdIter::new(self, depth, num_pages)
+    pub fn matching_page_ids(&self, num_pages: u32) -> PageIdIter {
+        PageIdIter::new(self, num_pages)
     }
 
     pub fn from_query(query: &Query, choice: &ChoiceVec) -> PartialHash {
@@ -70,11 +79,12 @@ impl PartialHash {
 }
 
 impl PageIdIter {
-    fn new(ma_hash: &PartialHash, depth: u8, num_pages: u32) -> Self {
-        //let usable_bits = depth + 1;
-        let usable_bits = highest_set_bit(num_pages);
+    fn new(ma_hash: &PartialHash, num_pages: u32) -> Self {
+        let usable_bits = highest_set_bit(num_pages) - 1;
+
         // used to calculate the max number of iterations
         let mut iterations = 1;
+
         // iter_mask is a mask to remove any trailing bits
         // from the iterator's mask & init_hash
         let mut iter_mask = 0;
@@ -87,32 +97,46 @@ impl PageIdIter {
             }
         }
 
+        // HUB stands for highest usable bit
+        let mask_hub = ith_bit(usable_bits, ma_hash.mask);
+        let hash_hub = ith_bit(usable_bits, ma_hash.hash);
+
+        // bits from 0 to (1 << (usable_bits - 1u8)) are 1
+        let full_num = (1u32 << usable_bits) - 1;
+
         PageIdIter {
+            // this is the starting branch of the iterator
+            state: match (mask_hub, hash_hub) {
+                // single pages have a werid state
+                _ if num_pages == 1 => HubState::HubOff,
+                (1, 0) => HubState::HubOff,
+                (1, 1) => HubState::HubSet,
+                (0, _) => HubState::HubUnknownA,
+                _ => unreachable!("unexpected match ({} {})", mask_hub, hash_hub)
+            },
             hash_init: ma_hash.hash & iter_mask & ma_hash.mask,
             current: 0,
-            num_pages: num_pages,
+            // the value of the nth page is actually (n - 1)
+            num_pages: num_pages - 1,
             mask: ma_hash.mask & iter_mask,
             usable_bits: usable_bits,
             max: iterations,
         }
     }
-}
 
-impl Iterator for PageIdIter {
-    type Item = u32;
+    fn last_bit(&self) -> u32 {
+        (1 << (self.usable_bits))
+    }
 
-    fn next(&mut self) -> Option<u32> {
-        trace!("PageIdIter::next, {:?}", self);
-        if self.max == self.current {
-            return None;
-        }
-        if self.num_pages == 1 {
-            self.current = self.max;
-            return Some(0);
-        }
+    // calculates hash without the highest usable
+    // bit value, and then increments the current
+    // count
+    fn calc_hash(&mut self) -> u32 {
         let mut page_id = self.hash_init;
+
         // bit to read from `current`
         let mut r_cursor = 0u8;
+
         // bit to write to in `page_id`
         let mut w_cursor = 0u8;
 
@@ -129,12 +153,63 @@ impl Iterator for PageIdIter {
             w_cursor += 1;
         }
 
-        if page_id < self.num_pages {
-            self.current += 1;
-            Some(page_id)
-        } else {
-            self.current = self.max;
-            None
+        self.current += 1;
+
+        page_id
+    }
+}
+
+
+impl Iterator for PageIdIter {
+    type Item = u32;
+
+    fn next(&mut self) -> Option<u32> {
+        if self.current == self.max { return None; }
+        println!("{:?}", self);
+
+        // Hub stands for highest usable bit
+        match self.state {
+            // When it's know the highest set bit is
+            HubState::HubOff => Some(self.calc_hash()),
+
+            // When the highest usable bit is known to be 1
+            HubState::HubSet => {
+                let hash = self.calc_hash() | self.last_bit();
+                if hash > self.num_pages {
+                    self.state = HubState::HubOff;
+                    return Some(hash - self.last_bit());
+                }
+                else {
+                    return Some(hash);
+                }
+            },
+
+            // When the Highest usable bit is unknown, there are
+            // two states, a state where we calculate it with the
+            // highest usable state (A) and a state without it (B).
+            HubState::HubUnknownA => {
+                let last = self.last_bit();
+                let hash = self.calc_hash() | last;
+
+                // if our hash is above the number of pages we
+                // down grade to the HubOff state, because we'll
+                // no longer be using the highest usable bit
+                if hash > self.num_pages {
+                    self.state = HubState::HubOff;
+                    return Some(hash - last);
+                }
+                else {
+                    // note the removal of the highest set bit
+                    self.state = HubState::HubUnknownB(hash - last);
+                    return Some(hash);
+                }
+            },
+            // this will yield the same result above except with
+            // the highest usable set bit removed.
+            HubState::HubUnknownB(hash) => {
+                self.state = HubState::HubUnknownA;
+                return Some(hash);
+            },
         }
     }
 }
@@ -142,6 +217,7 @@ impl Iterator for PageIdIter {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
     use super::{ PartialHash, FULL_MASK, PageIdIter };
     use query::{ Query };
     use tuple::Tuple;
@@ -205,42 +281,69 @@ mod tests {
 
     #[test]
     fn iter_with_no_ambiguities() {
-        let mut iter = PageIdIter::new(&PartialHash { hash: 0, mask: FULL_MASK }, 1, 3);
+        let mut iter = PageIdIter::new(&PartialHash { hash: 0, mask: FULL_MASK }, 3);
         assert!(iter.next().is_some());
         assert!(iter.next().is_none());
     }
 
     #[test]
-    fn iter_yields_correct_values_for_n7() {
-        let mut iter = PageIdIter::new(&PartialHash { hash: FULL_MASK, mask: 0b100 }, 3, 8);
-        assert_eq!(iter.next(), Some(0b100));
-        assert_eq!(iter.next(), Some(0b101));
-        assert_eq!(iter.next(), Some(0b110));
-        assert_eq!(iter.next(), Some(0b111));
-        assert_eq!(iter.next(), None);
+    fn iter_yields_correct_values_for_5_pages() {
+        // 1 -> 100
+        // 2 -> 001
+        // 3 -> 010
+        // 4 -> 011
+        let mut iter = PageIdIter::new(&PartialHash { hash: FULL_MASK, mask: 0b100 }, 5);
+        let expected: HashSet<u32> = vec![0b100, 0b1, 0b10, 0b11].into_iter().collect();
+        let results : HashSet<u32> = iter.collect();
+        assert_eq!(expected, results);
     }
 
     #[test]
-    fn iter_yields_correct_values_for_n6() {
-        let mut iter = PageIdIter::new(&PartialHash { hash: FULL_MASK, mask: 0b100 }, 3, 7);
-        assert_eq!(iter.next(), Some(0b100));
-        assert_eq!(iter.next(), Some(0b101));
-        assert_eq!(iter.next(), Some(0b110));
-        assert_eq!(iter.next(), None);
+    fn iter_yields_correct_values_for_8_pages() {
+        // 1 -> 100
+        // 2 -> 101
+        // 3 -> 110
+        // 4 -> 111
+        let mut iter = PageIdIter::new(&PartialHash { hash: FULL_MASK, mask: 0b100 }, 8);
+        let expected: HashSet<u32> = vec![0b100, 0b101, 0b110, 0b111].into_iter().collect();
+        let results : HashSet<u32> = iter.collect();
+        assert_eq!(expected, results);
+    }
+
+    #[test]
+    fn iter_yields_correct_values_for_8_pages_with_unknown_hub() {
+        // 1 -> 101
+        // 2 -> 001
+        // 3 -> 111
+        // 4 -> 011
+        let mut iter = PageIdIter::new(&PartialHash { hash: FULL_MASK, mask: 0b001 }, 8);
+        let expected: HashSet<u32> = vec![0b01, 0b11, 0b101, 0b111].into_iter().collect();
+        let results : HashSet<u32> = iter.collect();
+        assert_eq!(expected, results);
     }
 
     #[test]
     fn iter_single_page() {
-        let mut iter = PageIdIter::new(&PartialHash { hash: 1, mask: 1}, 1, 1);
+        let mut iter = PageIdIter::new(&PartialHash { hash: 1, mask: 1}, 1);
         assert_eq!(iter.next(), Some(0));
         assert_eq!(iter.next(), None);
     }
 
     #[test]
     fn iter_sp_zero() {
-        let mut iter = PageIdIter::new(&PartialHash { hash : 0b10, mask: 0b10}, 1, 2);
-        assert_eq!(iter.next(), Some(0));
-        assert_eq!(iter.next(), Some(1));
-        assert_eq!(iter.next(), None);
+        // 1 -> 00
+        // 2 -> 01
+        let mut iter = PageIdIter::new(&PartialHash { hash : 0b10, mask: 0b10}, 2);
+        let expected: HashSet<u32> = vec![0, 1].into_iter().collect();
+        let results : HashSet<u32> = iter.collect();
+        assert_eq!(expected, results);
+    }
+
+    #[test]
+    fn iter_3_pages() {
+        let mut iter = PageIdIter::new(&PartialHash { hash : 0b10, mask: 0b10}, 3);
+        let expected: HashSet<u32> = vec![1, 2].into_iter().collect();
+        let results : HashSet<u32> = iter.collect();
+        assert_eq!(expected, results);
     }
 }
