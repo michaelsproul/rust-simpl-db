@@ -23,10 +23,10 @@ impl Tuple {
     /// Parse a string into a tuple, validating that it contains no question marks,
     /// and is the correct length.
     pub fn parse(s: &str, num_attrs: u32) -> Option<Tuple> {
-        if s.contains('?') {
+        if s.contains('?') || s.contains('\0') {
             return None;
         }
-        let t = Tuple::parse_bytes(s.as_bytes());
+        let t = Tuple::parse_str(s);
         if t.values.len() == num_attrs as usize {
             Some(t)
         } else {
@@ -34,16 +34,17 @@ impl Tuple {
         }
     }
 
-    pub fn parse_bytes(s: &[u8]) -> Tuple {
-        let parse_single = |slice| {
-            str::from_utf8(slice).expect("Non UTF-8 data in database file.").to_string()
-        };
-
+    pub fn parse_str(s: &str) -> Tuple {
         Tuple {
-            values: s.split(|&b| b == ',' as u8)
-                     .map(parse_single)
+            values: s.split(',')
+                     .map(|s| s.to_string())
                      .collect()
         }
+    }
+
+    pub fn parse_bytes(bytes: &[u8]) -> Tuple {
+        let s = str::from_utf8(bytes).expect("Non UTF8 data in DB");
+        Tuple::parse_str(s)
     }
 
     pub fn to_string(&self) -> String {
