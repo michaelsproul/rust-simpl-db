@@ -26,17 +26,17 @@ pub enum HubState {
 pub struct PageIdIter {
     state: HubState,
     /// The number of yielded page_ids
-    current: u32,
+    iteration: u32,
     /// The maximum number of bits to consider, equal to d + 1, where d is the relation depth.
     highest_usable_bit: u8,
     /// The number of pages
-    num_pages: u32,
+    max_page_id: u32,
     /// Initial hash value, ambiguous bits will be 0
     hash_init: u32,
     /// Used to check which bits are ambiguous
     mask: u32,
     /// The max number of page_ids to yield
-    max: u32,
+    max_iteration: u32,
 }
 
 impl PartialHash {
@@ -48,8 +48,8 @@ impl PartialHash {
         return self.mask == FULL_MASK;
     }
 
-    pub fn matching_page_ids(&self, num_pages: u32) -> PageIdIter {
-        PageIdIter::new(self, num_pages)
+    pub fn matching_page_ids(&self, max_page_id: u32) -> PageIdIter {
+        PageIdIter::new(self, max_page_id)
     }
 
     pub fn from_query(query: &Query, choice: &ChoiceVec) -> PartialHash {
@@ -79,8 +79,8 @@ impl PartialHash {
 }
 
 impl PageIdIter {
-    fn new(ma_hash: &PartialHash, num_pages: u32) -> Self {
-        let highest_usable_bit = highest_set_bit(num_pages) - 1;
+    fn new(ma_hash: &PartialHash, max_page_id: u32) -> Self {
+        let highest_usable_bit = highest_set_bit(max_page_id) - 1;
 
         // used to calculate the max number of iterations
         let mut iterations = 1;
@@ -110,12 +110,12 @@ impl PageIdIter {
                 _ => unreachable!("unexpected match ({} {})", mask_hub, hash_hub)
             },
             hash_init: ma_hash.hash & iter_mask & ma_hash.mask,
-            current: 0,
+            iteration: 0,
             // the value of the nth page is actually (n - 1)
-            num_pages: num_pages - 1,
+            max_page_id: max_page_id - 1,
             mask: ma_hash.mask & iter_mask,
             highest_usable_bit: highest_usable_bit,
-            max: iterations,
+            max_iteration: iterations,
         }
     }
 
@@ -129,7 +129,7 @@ impl PageIdIter {
     fn calc_hash(&mut self) -> u32 {
         let mut page_id = self.hash_init;
 
-        // bit to read from `current`
+        // bit to read from `iteration`
         let mut r_cursor = 0u8;
 
         // bit to write to in `page_id`
@@ -142,13 +142,13 @@ impl PageIdIter {
             // @ the value of w_cursor, from the value of current @ the
             // value of r_cursor & advance the r_cursor
             if ith_bit(w_cursor, self.mask) == 0 {
-                page_id |= ith_bit(r_cursor, self.current) << w_cursor;
+                page_id |= ith_bit(r_cursor, self.iteration) << w_cursor;
                 r_cursor += 1;
             }
             w_cursor += 1;
         }
 
-        self.current += 1;
+        self.iteration += 1;
 
         page_id
     }
@@ -159,8 +159,7 @@ impl Iterator for PageIdIter {
     type Item = u32;
 
     fn next(&mut self) -> Option<u32> {
-        if self.current == self.max { return None; }
-        println!("{:?}", self);
+        if self.iteration == self.max_iteration { return None; }
 
         // Hub stands for highest usable bit
         match self.state {
@@ -170,7 +169,7 @@ impl Iterator for PageIdIter {
             // When the highest usable bit is known to be 1
             HubState::HubSet => {
                 let hash = self.calc_hash() | self.last_bit();
-                if hash > self.num_pages {
+                if hash > self.max_page_id {
                     self.state = HubState::HubOff;
                     return Some(hash - self.last_bit());
                 }
@@ -189,7 +188,7 @@ impl Iterator for PageIdIter {
                 // if our hash is above the number of pages we
                 // down grade to the HubOff state, because we'll
                 // no longer be using the highest usable bit
-                if hash > self.num_pages {
+                if hash > self.max_page_id {
                     self.state = HubState::HubOff;
                     return Some(hash - last);
                 }
@@ -199,8 +198,9 @@ impl Iterator for PageIdIter {
                     return Some(hash);
                 }
             },
-            // this will yield the same result above except with
-            // the highest usable set bit removed.
+
+            // this will yield the same result above but
+            // without the highest usable set bit.
             HubState::HubUnknownB(hash) => {
                 self.state = HubState::HubUnknownA;
                 return Some(hash);
