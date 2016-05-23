@@ -52,11 +52,14 @@ impl<'b> Page<'b> {
 
     /// Release the page and write out to disk.
     pub fn close(mut self) -> io::Result<()> {
+        self.write()
+        /*
         if self.dirty {
             self.write()
         } else {
             Ok(())
         }
+        */
     }
 
     pub fn free_space(&self) -> usize {

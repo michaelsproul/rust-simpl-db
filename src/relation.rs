@@ -1,6 +1,6 @@
 use std::path::Path;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Seek, SeekFrom};
+use std::io::{self, Seek, SeekFrom, Write};
 use std::collections::LinkedList;
 use std::error::Error;
 
@@ -160,6 +160,8 @@ impl Relation {
         if self.num_tuples == self.resize_threshold() && self.depth as usize != HASH_SIZE {
             info!("Resizing the relation.");
             try!(self.grow());
+            self.ovflow_file.flush().unwrap();
+            debug_assert!(self.is_sane() == ());
         }
 
         let tuple_hash = t.hash(&self.choice_vec);
@@ -198,6 +200,7 @@ impl Relation {
         next_page_id: &mut u32,
         ovflow_file: &'a File,
         tuple_cache: &mut LinkedList<Tuple>,
+        tuples_seen: &mut usize,
         spare_pages: &mut LinkedList<u32>
     ) -> io::Result<()>
     {
@@ -215,7 +218,7 @@ impl Relation {
         // If there's another page to be loaded, use that.
         else if *next_page_id != NO_OVFLOW {
             trace!("  loading the next page and using that: {}", *next_page_id);
-            try!(Relation::load_next_page(next_page_id, ovflow_file, tuple_cache, spare_pages));
+            try!(Relation::load_next_page(next_page_id, ovflow_file, tuple_cache, tuples_seen, spare_pages));
             spare_pages.pop_front().expect("Load next page didn't work")
         }
         // In this case (probably rare), we've run out of overflow pages from before the split.
@@ -238,16 +241,23 @@ impl Relation {
     }
 
     /// Helper function for grow.
+    /// Load the next page from *next_page_id by:
+    /// 1. Loading all the tuples into tuple_cache.
+    /// 2. Adding next_page_id to the list of spare pages.
+    /// 3. Updating next_page_id to point at the overflow page for the old next_page_id.
     fn load_next_page(
         next_page_id: &mut u32,
         ovflow_file: &File,
         tuple_cache: &mut LinkedList<Tuple>,
+        tuples_seen: &mut usize,
         spare_pages: &mut LinkedList<u32>
     ) -> io::Result<()>
     {
         assert!(*next_page_id != NO_OVFLOW);
         let next_page = try!(Page::read(ovflow_file, *next_page_id));
-        tuple_cache.append(&mut next_page.get_tuple_list());
+        let mut new_tuples = next_page.get_tuple_list();
+        *tuples_seen += new_tuples.len();
+        tuple_cache.append(&mut new_tuples);
 
         // Having loaded the tuples, add the page to the list of spare pages.
         spare_pages.push_back(*next_page_id);
@@ -268,7 +278,7 @@ impl Relation {
 
         debug!("Splitting page {:b} into {:b} and {:b}", sp, sp, high_page.id);
 
-        // First old data page.
+        // Data page to be split.
         let old_low_page = try!(Page::read(&self.data_file, sp));
 
         // List of spare overflow page IDs that can be claimed for extra storage.
@@ -276,8 +286,9 @@ impl Relation {
 
         // Cache of tuples to be redistributed.
         let mut tuple_cache = old_low_page.get_tuple_list();
+        let mut tuples_seen = tuple_cache.len();
 
-        // Page ID of the next page to redistribute.
+        // Page ID of the next overflow page to redistribute.
         let mut next_page_id = old_low_page.ovflow;
 
         drop(old_low_page);
@@ -287,8 +298,10 @@ impl Relation {
             trace!("  next_page_id = {}", next_page_id);
             trace!("  size tuple_cache = {}", tuple_cache.len());
             trace!("  spare_pages = {:?}", spare_pages);
+            trace!("  tuples seen = {:?}", tuples_seen);
             // If there is a tuple in the cache, redistribute it.
             if let Some(tuple) = tuple_cache.pop_front() {
+                warn!("TUPLE: {}", tuple.to_string());
                 let full_hash = tuple.hash(&self.choice_vec);
                 trace!("  full tuple hash = {:b}", full_hash);
                 let hash = lower_bits(d + 1, full_hash);
@@ -305,7 +318,7 @@ impl Relation {
                 };
                 try!(Relation::store_tuple_grow(
                     &s_tuple, storage_page, &mut next_page_id,
-                    &self.ovflow_file, &mut tuple_cache, &mut spare_pages
+                    &self.ovflow_file, &mut tuple_cache, &mut tuples_seen, &mut spare_pages
                 ));
             }
             // Otherwise if the cache is exhausted and there are no further pages, we're done.
@@ -314,10 +327,10 @@ impl Relation {
             }
             // If the cache is exhausted, but there are more pages to read, load one.
             else {
-                trace!("  tuple cache exhausted, loading the next file");
+                trace!("  tuple cache exhausted, loading the next page");
                 try!(Relation::load_next_page(
                     &mut next_page_id, &self.ovflow_file,
-                    &mut tuple_cache, &mut spare_pages)
+                    &mut tuple_cache, &mut tuples_seen, &mut spare_pages)
                 );
             }
         }
@@ -329,6 +342,7 @@ impl Relation {
 
         // If there are left-over overflow pages, zero them.
         // NOTE: This is a source of fragmentation in the overflow file.
+        debug!("TOTAL tuples seen: {}", tuples_seen);
         debug!("Spare pages left are: {:?}", spare_pages);
         for spare_page in spare_pages {
             let mut leftover_page = Page::empty(&self.ovflow_file, spare_page);
