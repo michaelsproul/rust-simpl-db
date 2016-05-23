@@ -11,6 +11,7 @@ rand = "0.3.14"
 
 [dev-dependencies]
 uuid = { version = "0.2", features = ["use_std", "v4"] }
+quickcheck = "0.2"
 
 [profile.release]
 debug = true

@@ -407,7 +407,7 @@ impl<'a> Iterator for SelectIter<'a> {
             Some(id) => id,
             None => { return None }
         };
-        trace!("next_page_id is {:b} ({})", next_page_id, next_page_id);
+        info!("next_page_id is {:b} ({})", next_page_id, next_page_id);
         let next_page = match Page::read(self.data_file, next_page_id) {
             Ok(p) => p,
             Err(e) => {

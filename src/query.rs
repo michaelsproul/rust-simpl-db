@@ -1,6 +1,6 @@
 use tuple::Tuple;
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
 pub struct Query<'a> {
     pub matches: Vec<Option<&'a str>>
 }
