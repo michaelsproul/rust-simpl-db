@@ -1,4 +1,4 @@
-all: gendata
+all:
 	cargo build --release
 
 gendata:
